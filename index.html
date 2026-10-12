@@ -3,63 +3,134 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tra cứu nề nếp học sinh</title>
+  <title>Cổng Tra Cứu Nề Nếp Học Sinh</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; padding: 20px; }
-    .card { max-width: 500px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    h2 { text-align: center; color: #1e3a8a; }
-    input { width: 100%; padding: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
-    button { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
-    .item { margin-top: 16px; border-bottom: 1px solid #eee; padding-bottom: 12px; }
-    .error { color: red; text-align: center; margin-top: 12px; }
-    .tag { display: inline-block; background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
+    :root { --primary: #1e40af; --bg: #f8fafc; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 16px; }
+    .container { max-width: 650px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 24px; }
+    h2 { text-align: center; color: var(--primary); margin-top: 0; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+    .tab-btn { flex: 1; padding: 10px; border: none; background: #f1f5f9; border-radius: 6px; cursor: pointer; font-weight: 600; color: #475569; }
+    .tab-btn.active { background: var(--primary); color: white; }
+    .filter-group { display: none; margin-bottom: 16px; }
+    .filter-group.active { display: block; }
+    label { font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block; }
+    input[type="text"], input[type="date"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; margin-bottom: 10px; }
+    .date-row { display: flex; gap: 10px; }
+    .date-row > div { flex: 1; }
+    button.search-btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    button.search-btn:hover { background: #1d4ed8; }
+    .result-box { margin-top: 24px; }
+    .card-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 12px; background: #ffffff; border-left: 4px solid #ef4444; }
+    .card-item .header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 6px; }
+    .tag { background: #fee2e2; color: #b91c1c; padding: 3px 8px; border-radius: 4px; font-size: 13px; font-weight: 600; }
+    .meta { font-size: 13px; color: #64748b; margin-top: 4px; }
+    .empty-state { text-align: center; color: #16a34a; padding: 20px; font-weight: 600; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>Tra Cứu Lỗi Vi Phạm Nề Nếp</h2>
-    <input type="text" id="maHS" placeholder="Nhập mã học sinh...">
-    <button onclick="traCuu()">Tra cứu thông tin</button>
-    <div id="ketQua"></div>
+
+<div class="container">
+  <h2>Tra Cứu Vi Phạm Nề Nếp</h2>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('tab-ma', this)">Theo Mã HS</button>
+    <button class="tab-btn" onclick="switchTab('tab-lop', this)">Theo Lớp</button>
+    <button class="tab-btn" onclick="switchTab('tab-ngay', this)">Theo Ngày</button>
   </div>
 
-  <script>
-    // Thay link Apps Script bạn vừa copy vào đây
-    const API_URL = "DÁN_LINK_WEB_APP_APPS_SCRIPT_VÀO_ĐÂY";
+  <!-- Tìm theo Mã HS -->
+  <div id="tab-ma" class="filter-group active">
+    <label>Nhập Mã Học Sinh:</label>
+    <input type="text" id="inputMaHS" placeholder="Ví dụ: 2411280289...">
+  </div>
 
-    async function traCuu() {
-      const ma = document.getElementById("maHS").value.trim();
-      const divKetQua = document.getElementById("ketQua");
-      if (!ma) {
-        divKetQua.innerHTML = "<p class='error'>Vui lòng nhập mã học sinh!</p>";
+  <!-- Tìm theo Lớp -->
+  <div id="tab-lop" class="filter-group">
+    <label>Nhập Tên Lớp:</label>
+    <input type="text" id="inputLop" placeholder="Ví dụ: 10A1, 11A2...">
+  </div>
+
+  <!-- Tìm theo Ngày -->
+  <div id="tab-ngay" class="filter-group">
+    <div class="date-row">
+      <div>
+        <label>Từ ngày:</label>
+        <input type="date" id="inputTuNgay">
+      </div>
+      <div>
+        <label>Đến ngày:</label>
+        <input type="date" id="inputDenNgay">
+      </div>
+    </div>
+  </div>
+
+  <button class="search-btn" onclick="thucHienTraCuu()">Tìm kiếm thông tin</button>
+
+  <div class="result-box" id="ketQua"></div>
+</div>
+
+<script>
+  // DÁN ĐƯỜNG LINK WEB APP APPS SCRIPT CỦA BẠN VÀO ĐÂY:
+  const API_URL = "DÁN_LINK_WEB_APP_APPS_SCRIPT_VÀO_ĐÂY";
+
+  let currentTab = 'tab-ma';
+
+  function switchTab(tabId, btn) {
+    currentTab = tabId;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.filter-group').forEach(g => g.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+  }
+
+  async function thucHienTraCuu() {
+    const divKQ = document.getElementById("ketQua");
+    divKQ.innerHTML = "<p style='text-align:center; color:#64748b;'>Đang tải dữ liệu...</p>";
+
+    let query = "";
+    if (currentTab === 'tab-ma') {
+      const ma = document.getElementById("inputMaHS").value.trim();
+      if (!ma) return alert("Vui lòng nhập Mã học sinh!");
+      query = `maHS=${encodeURIComponent(ma)}`;
+    } else if (currentTab === 'tab-lop') {
+      const lop = document.getElementById("inputLop").value.trim();
+      if (!lop) return alert("Vui lòng nhập Tên lớp!");
+      query = `lop=${encodeURIComponent(lop)}`;
+    } else if (currentTab === 'tab-ngay') {
+      const tu = document.getElementById("inputTuNgay").value;
+      const den = document.getElementById("inputDenNgay").value;
+      if (!tu && !den) return alert("Vui lòng chọn ít nhất một mốc ngày!");
+      query = `tuNgay=${tu}&denNgay=${den}`;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}?${query}`);
+      const data = await res.json();
+
+      if (!data || data.length === 0) {
+        divKQ.innerHTML = "<div class='empty-state'>Không có dữ liệu vi phạm nào được ghi nhận!</div>";
         return;
       }
 
-      divKetQua.innerHTML = "<p style='text-align:center;'>Đang tải dữ liệu...</p>";
-
-      try {
-        const res = await fetch(`${API_URL}?maHS=${encodeURIComponent(ma)}`);
-        const data = await res.json();
-
-        if (data.length === 0) {
-          divKetQua.innerHTML = "<p style='color: green; text-align: center; margin-top: 16px;'>Chúc mừng! Học sinh không có ghi nhận vi phạm nào.</p>";
-          return;
-        }
-
-        let html = `<h4 style='margin-top:20px;'>Họ tên: ${data[0]["Họ tên"] || "—"} (${data[0]["Lớp"] || "—"})</h4>`;
-        data.forEach((item, index) => {
-          html += `
-            <div class="item">
-              <p><b>Lần ${index + 1}:</b> <span class="tag">${item["Lỗi vi phạm"]}</span></p>
-              <p style="font-size: 13px; color: #666;">Thời gian: ${item["Thời gian"]}</p>
+      let html = `<p style='font-size:14px; color:#475569;'>Tìm thấy <b>${data.length}</b> lượt vi phạm:</p>`;
+      data.forEach((item, idx) => {
+        html += `
+          <div class="card-item">
+            <div class="header">
+              <span>${idx + 1}. ${item["Họ tên"] || "Học sinh"} - Lớp: ${item["Lớp"] || "—"}</span>
+              <span class="tag">${item["Lỗi vi phạm"] || "Chưa rõ"}</span>
             </div>
-          `;
-        });
-        divKetQua.innerHTML = html;
-      } catch (e) {
-        divKetQua.innerHTML = "<p class='error'>Có lỗi xảy ra khi tra cứu. Vui lòng thử lại sau!</p>";
-      }
+            <div class="meta">⏰ Thời gian: ${item["Thời gian"] ? new Date(item["Thời gian"]).toLocaleString('vi-VN') : "—"}</div>
+            <div class="meta">🆔 Mã HS: ${item["Mã HS"] || "—"}</div>
+          </div>
+        `;
+      });
+      divKQ.innerHTML = html;
+    } catch (err) {
+      divKQ.innerHTML = "<p style='color:red; text-align:center;'>Lỗi kết nối máy chủ! Hãy kiểm tra lại link Web App.</p>";
     }
-  </script>
+  }
+</script>
 </body>
 </html>
