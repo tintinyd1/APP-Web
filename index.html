@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tra cứu nề nếp học sinh</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; padding: 20px; }
+    .card { max-width: 500px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h2 { text-align: center; color: #1e3a8a; }
+    input { width: 100%; padding: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
+    button { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .item { margin-top: 16px; border-bottom: 1px solid #eee; padding-bottom: 12px; }
+    .error { color: red; text-align: center; margin-top: 12px; }
+    .tag { display: inline-block; background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 4px; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Tra Cứu Lỗi Vi Phạm Nề Nếp</h2>
+    <input type="text" id="maHS" placeholder="Nhập mã học sinh...">
+    <button onclick="traCuu()">Tra cứu thông tin</button>
+    <div id="ketQua"></div>
+  </div>
+
+  <script>
+    // Thay link Apps Script bạn vừa copy vào đây
+    const API_URL = "DÁN_LINK_WEB_APP_APPS_SCRIPT_VÀO_ĐÂY";
+
+    async function traCuu() {
+      const ma = document.getElementById("maHS").value.trim();
+      const divKetQua = document.getElementById("ketQua");
+      if (!ma) {
+        divKetQua.innerHTML = "<p class='error'>Vui lòng nhập mã học sinh!</p>";
+        return;
+      }
+
+      divKetQua.innerHTML = "<p style='text-align:center;'>Đang tải dữ liệu...</p>";
+
+      try {
+        const res = await fetch(`${API_URL}?maHS=${encodeURIComponent(ma)}`);
+        const data = await res.json();
+
+        if (data.length === 0) {
+          divKetQua.innerHTML = "<p style='color: green; text-align: center; margin-top: 16px;'>Chúc mừng! Học sinh không có ghi nhận vi phạm nào.</p>";
+          return;
+        }
+
+        let html = `<h4 style='margin-top:20px;'>Họ tên: ${data[0]["Họ tên"] || "—"} (${data[0]["Lớp"] || "—"})</h4>`;
+        data.forEach((item, index) => {
+          html += `
+            <div class="item">
+              <p><b>Lần ${index + 1}:</b> <span class="tag">${item["Lỗi vi phạm"]}</span></p>
+              <p style="font-size: 13px; color: #666;">Thời gian: ${item["Thời gian"]}</p>
+            </div>
+          `;
+        });
+        divKetQua.innerHTML = html;
+      } catch (e) {
+        divKetQua.innerHTML = "<p class='error'>Có lỗi xảy ra khi tra cứu. Vui lòng thử lại sau!</p>";
+      }
+    }
+  </script>
+</body>
+</html>
