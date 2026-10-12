@@ -9,13 +9,13 @@
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 16px; }
     .container { max-width: 650px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 24px; }
     h2 { text-align: center; color: var(--primary); margin-top: 0; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
-    .tab-btn { flex: 1; padding: 10px; border: none; background: #f1f5f9; border-radius: 6px; cursor: pointer; font-weight: 600; color: #475569; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; flex-wrap: wrap; }
+    .tab-btn { flex: 1; min-width: 100px; padding: 10px; border: none; background: #f1f5f9; border-radius: 6px; cursor: pointer; font-weight: 600; color: #475569; font-size: 14px; }
     .tab-btn.active { background: var(--primary); color: white; }
     .filter-group { display: none; margin-bottom: 16px; }
     .filter-group.active { display: block; }
     label { font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block; }
-    input[type="text"], input[type="date"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; margin-bottom: 10px; }
+    input[type="text"], input[type="date"], select { width: 100%; padding: 11px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; margin-bottom: 10px; background: white; }
     .date-row { display: flex; gap: 10px; }
     .date-row > div { flex: 1; }
     button.search-btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
@@ -34,7 +34,8 @@
   <h2>Tra Cứu Vi Phạm Nề Nếp</h2>
 
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('tab-ma', this)">Theo Mã HS</button>
+    <button class="tab-btn active" onclick="switchTab('tab-ma', this)">Mã HS</button>
+    <button class="tab-btn" onclick="switchTab('tab-ten', this)">Tên HS</button>
     <button class="tab-btn" onclick="switchTab('tab-lop', this)">Theo Lớp</button>
     <button class="tab-btn" onclick="switchTab('tab-ngay', this)">Theo Ngày</button>
   </div>
@@ -42,13 +43,22 @@
   <!-- Tìm theo Mã HS -->
   <div id="tab-ma" class="filter-group active">
     <label>Nhập Mã Học Sinh:</label>
-    <input type="text" id="inputMaHS" placeholder="Ví dụ: 2411280289...">
+    <input type="text" id="inputMaHS" placeholder="Ví dụ: 2451134763...">
   </div>
 
-  <!-- Tìm theo Lớp -->
+  <!-- Tìm theo Tên HS -->
+  <div id="tab-ten" class="filter-group">
+    <label>Nhập Họ và Tên Học Sinh:</label>
+    <input type="text" id="inputHoTen" placeholder="Gõ tên hoặc họ tên (ví dụ: An, Minh, Nguyễn...)">
+    <small style="color: #64748b;">Gõ từ khóa tên sẽ hiển thị tất cả học sinh trùng hoặc chứa tên đó.</small>
+  </div>
+
+  <!-- Tìm theo Lớp (Dropdown chọn) -->
   <div id="tab-lop" class="filter-group">
-    <label>Nhập Tên Lớp:</label>
-    <input type="text" id="inputLop" placeholder="Ví dụ: 10A1, 11A2...">
+    <label>Chọn Lớp Học:</label>
+    <select id="selectLop">
+      <option value="">-- Đang tải danh sách lớp... --</option>
+    </select>
   </div>
 
   <!-- Tìm theo Ngày -->
@@ -71,8 +81,8 @@
 </div>
 
 <script>
-  // DÁN ĐƯỜNG LINK WEB APP APPS SCRIPT CỦA BẠN VÀO ĐÂY:
-  const API_URL = "https://script.google.com/macros/s/AKfycby8-rO4396YDF0C-DtFYyVrdKUOU_GIFNv2jDZrslYbhbYOozt9PW3dUdbdTPrQNl0/exec";
+  // DÁN ĐÚNG ĐƯỜNG LINK WEB APP APPS SCRIPT CỦA BẠN (ĐUÔI /exec):
+  const API_URL = "DÁN_LINK_WEB_APP_APPS_SCRIPT_VÀO_ĐÂY";
 
   let currentTab = 'tab-ma';
 
@@ -84,6 +94,24 @@
     document.getElementById(tabId).classList.add('active');
   }
 
+  // Tự động tải danh sách lớp vào thẻ select
+  async function loadDanhSachLop() {
+    const sel = document.getElementById("selectLop");
+    try {
+      const res = await fetch(`${API_URL}?action=getLopList`);
+      const listLop = await res.json();
+      sel.innerHTML = '<option value="">-- Chọn một lớp --</option>';
+      listLop.forEach(lop => {
+        sel.innerHTML += `<option value="${lop}">${lop}</option>`;
+      });
+    } catch (e) {
+      sel.innerHTML = '<option value="">-- Không thể tải danh sách lớp --</option>';
+    }
+  }
+
+  // Gọi tải danh sách lớp khi vừa tải trang
+  window.onload = loadDanhSachLop;
+
   async function thucHienTraCuu() {
     const divKQ = document.getElementById("ketQua");
     divKQ.innerHTML = "<p style='text-align:center; color:#64748b;'>Đang tải dữ liệu...</p>";
@@ -93,14 +121,18 @@
       const ma = document.getElementById("inputMaHS").value.trim();
       if (!ma) return alert("Vui lòng nhập Mã học sinh!");
       query = `maHS=${encodeURIComponent(ma)}`;
+    } else if (currentTab === 'tab-ten') {
+      const ten = document.getElementById("inputHoTen").value.trim();
+      if (!ten) return alert("Vui lòng nhập Họ tên học sinh!");
+      query = `hoTen=${encodeURIComponent(ten)}`;
     } else if (currentTab === 'tab-lop') {
-      const lop = document.getElementById("inputLop").value.trim();
-      if (!lop) return alert("Vui lòng nhập Tên lớp!");
+      const lop = document.getElementById("selectLop").value;
+      if (!lop) return alert("Vui lòng chọn Lớp!");
       query = `lop=${encodeURIComponent(lop)}`;
     } else if (currentTab === 'tab-ngay') {
       const tu = document.getElementById("inputTuNgay").value;
       const den = document.getElementById("inputDenNgay").value;
-      if (!tu && !den) return alert("Vui lòng chọn ít nhất một mốc ngày!");
+      if (!tu && !den) return alert("Vui lòng chọn mốc thời gian!");
       query = `tuNgay=${tu}&denNgay=${den}`;
     }
 
@@ -109,7 +141,7 @@
       const data = await res.json();
 
       if (!data || data.length === 0) {
-        divKQ.innerHTML = "<div class='empty-state'>Không có dữ liệu vi phạm nào được ghi nhận!</div>";
+        divKQ.innerHTML = "<div class='empty-state'>Không có dữ liệu vi phạm nào phù hợp!</div>";
         return;
       }
 
