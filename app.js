@@ -24,14 +24,17 @@
     activeView: 'today',        // Mặc định mở trang tra cứu lịch hôm nay
     adminActiveSubTab: 'rooms',
     todayDayOffset: 0,
+    periodTimes: null,          // Cấu hình giờ từng tiết Sáng/Chiều do Admin tùy chỉnh
     rooms: [],
-    classes: [],
+    classes: [],                // Danh sách lớp kèm thông tin Lớp trưởng (Tên, SĐT, Email)
     subjects: [],
     users: [],
     bookings: [],
     issues: [],
     weekCustomNames: {},
     lockedWeeks: {},            // { [weekNum]: boolean } (true = locked, false = unlocked)
+    notificationSettings: null, // Cấu hình tự động gửi thông báo 21h
+    notificationLogs: [],       // Nhật ký đã phát thông báo cho lớp trưởng
     currentUser: null,
     generatedWeeks: [],
     tempBaoGiang: null          // Lưu trữ dữ liệu file báo giảng đang xem trước
@@ -46,22 +49,38 @@
     7: 'Thứ 7'
   };
 
-  const PERIOD_TIMES = {
+  const PERIOD_TIMES_DEFAULT = {
     sang: {
-      1: '07:15 - 08:00',
-      2: '08:05 - 08:50',
-      3: '09:05 - 09:50',
-      4: '09:55 - 10:40',
-      5: '10:45 - 11:30'
+      1: { start: '07:15', end: '08:00' },
+      2: { start: '08:05', end: '08:50' },
+      3: { start: '09:05', end: '09:50' },
+      4: { start: '09:55', end: '10:40' },
+      5: { start: '10:45', end: '11:30' }
     },
     chieu: {
-      1: '13:15 - 14:00',
-      2: '14:05 - 14:50',
-      3: '15:05 - 15:50',
-      4: '15:55 - 16:40',
-      5: '16:45 - 17:30'
+      1: { start: '13:15', end: '14:00' },
+      2: { start: '14:05', end: '14:50' },
+      3: { start: '15:05', end: '15:50' },
+      4: { start: '15:55', end: '16:40' },
+      5: { start: '16:45', end: '17:30' }
     }
   };
+
+  // Helper truy xuất giờ bắt đầu & kết thúc của một tiết học (tương thích cả khi Admin đã chỉnh sửa)
+  function getPeriodTime(session, period) {
+    if (appState.periodTimes && appState.periodTimes[session] && appState.periodTimes[session][period]) {
+      return appState.periodTimes[session][period];
+    }
+    return (PERIOD_TIMES_DEFAULT[session] && PERIOD_TIMES_DEFAULT[session][period]) || {
+      start: session === 'sang' ? '07:15' : '13:15',
+      end: session === 'sang' ? '08:00' : '14:00'
+    };
+  }
+
+  function getPeriodTimeRange(session, period) {
+    const pt = getPeriodTime(session, period);
+    return `${pt.start} - ${pt.end}`;
+  }
 
   // ================= INITIALIZATION =================
   window.addEventListener('DOMContentLoaded', () => {
@@ -70,6 +89,46 @@
     renderAll();
     setupGlobalClickListeners();
   });
+
+  // Chuẩn hóa dữ liệu lớp học để luôn có thông tin Lớp trưởng (Tên, SĐT, Email)
+  function normalizeClassItem(c) {
+    if (typeof c === 'string') {
+      const cleanName = c.trim().toUpperCase();
+      return {
+        name: cleanName,
+        monitorName: 'Lớp trưởng ' + cleanName,
+        monitorPhone: '0912345601',
+        monitorEmail: `lop${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`
+      };
+    }
+    const cleanName = (c.name || '').trim().toUpperCase();
+    return {
+      name: cleanName,
+      monitorName: c.monitorName || (cleanName ? 'Lớp trưởng ' + cleanName : 'Lớp trưởng'),
+      monitorPhone: c.monitorPhone || '',
+      monitorEmail: c.monitorEmail || ''
+    };
+  }
+
+  // Chuẩn hóa thông tin phòng máy để luôn có location phục vụ thông báo 21h
+  function normalizeRoomItem(r) {
+    const name = r.name || 'Phòng thực hành';
+    const loc = r.location || r.fullName || 'Tầng 2 - Dãy nhà B';
+    return {
+      id: r.id || `room_${Date.now()}`,
+      name: name,
+      location: loc,
+      fullName: r.fullName || `${name} (${loc})`,
+      totalComputers: r.totalComputers !== undefined ? r.totalComputers : 36,
+      workingComputers: r.workingComputers !== undefined ? r.workingComputers : 36,
+      damagedComputers: r.damagedComputers || 0,
+      projector: r.projector || 'Máy chiếu HDMI',
+      airConditioners: r.airConditioners || '2 máy điều hòa',
+      managerName: r.managerName || 'Quản trị viên',
+      managerEmail: r.managerEmail || 'admin@gmail.com',
+      status: r.status || 'active'
+    };
+  }
 
   function initData() {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -83,14 +142,28 @@
         appState.yearEndDate = parsed.yearEndDate || initial.yearEndDate || '2027-05-31';
         appState.currentWeekNumber = parsed.currentWeekNumber || 7;
         appState.selectedWeekNumber = parsed.selectedWeekNumber || 7;
-        appState.rooms = parsed.rooms && parsed.rooms.length ? parsed.rooms : (initial.rooms || []);
-        appState.classes = parsed.classes && parsed.classes.length ? parsed.classes : (initial.classes || []);
+        appState.periodTimes = parsed.periodTimes || initial.periodTimes || JSON.parse(JSON.stringify(PERIOD_TIMES_DEFAULT));
+
+        const rawRooms = parsed.rooms && parsed.rooms.length ? parsed.rooms : (initial.rooms || []);
+        appState.rooms = rawRooms.map(normalizeRoomItem);
+
+        const rawClasses = parsed.classes && parsed.classes.length ? parsed.classes : (initial.classes || []);
+        appState.classes = rawClasses.map(normalizeClassItem);
+
         appState.subjects = parsed.subjects || initial.subjects || [];
         appState.users = parsed.users && parsed.users.length ? parsed.users : (initial.users || []);
         appState.bookings = parsed.bookings || [];
         appState.issues = parsed.issues || [];
         appState.weekCustomNames = parsed.weekCustomNames || initial.weekCustomNames || {};
         appState.lockedWeeks = parsed.lockedWeeks || {};
+
+        appState.notificationSettings = parsed.notificationSettings || initial.notificationSettings || {
+          autoSendEnabled: true,
+          sendHour: 21,
+          sendMinute: 0,
+          messageTemplate: 'Ngày mai lớp {tenLop} thực hành Tiết {tiet} ({gioBatDau} - {gioKetThuc}) tại phòng {tenPhong} vị trí {viTri}.'
+        };
+        appState.notificationLogs = parsed.notificationLogs || [];
         appState.selectedRoomId = parsed.selectedRoomId || (appState.rooms[0]?.id || '');
       } catch (e) {
         console.error('Error parsing localStorage', e);
@@ -100,22 +173,50 @@
       loadDefaultInitial(initial);
     }
 
+    // Luôn đảm bảo tài khoản Admin và Giáo viên cơ bản luôn sẵn sàng trong hệ thống
+    if (!appState.users.some(u => u.role === 'admin' || (u.email && u.email.toLowerCase() === 'admin@gmail.com'))) {
+      appState.users.unshift({
+        email: 'admin@gmail.com',
+        password: 'admin',
+        name: 'Quản Trị Viên Phòng Máy',
+        phone: '0988888888',
+        role: 'admin',
+        department: 'Ban Quản Trị'
+      });
+    }
+    if (!appState.users.some(u => u.email && u.email.toLowerCase() === 'thanh.gv@gmail.com')) {
+      appState.users.push({
+        email: 'thanh.gv@gmail.com',
+        password: '123',
+        name: 'Thầy Phạm Đình Thanh',
+        phone: '0912345678',
+        role: 'teacher',
+        department: 'Tổ Tin học'
+      });
+    }
+
+    // Đảm bảo tất cả user đều có mật khẩu
+    appState.users.forEach(u => {
+      if (!u.password) {
+        u.password = u.role === 'admin' ? 'admin' : '123';
+      }
+    });
+
     generateSchoolWeeks();
 
-    // Init Current User
+    // Init Current User: MẶC ĐỊNH LÀ KHÁCH (CHƯA ĐĂNG NHẬP)
+    // "Nếu không đăng nhập thì chỉ có thể xem được lịch thực hành"
     const savedUser = localStorage.getItem(CURRENT_USER_KEY);
     if (savedUser) {
       try {
-        appState.currentUser = JSON.parse(savedUser);
+        const parsed = JSON.parse(savedUser);
+        const matched = appState.users.find(u => u.email.toLowerCase() === (parsed.email || '').toLowerCase());
+        appState.currentUser = matched || null;
       } catch (e) {
-        appState.currentUser = appState.users[0];
+        appState.currentUser = null;
       }
     } else {
-      appState.currentUser = appState.users[0] || {
-        email: 'admin@gmail.com',
-        name: 'Quản Trị Viên',
-        role: 'admin'
-      };
+      appState.currentUser = null; // Khách / Chưa đăng nhập
     }
 
     if (!appState.selectedRoomId && appState.rooms.length > 0) {
@@ -129,12 +230,14 @@
     appState.yearEndDate = initial.yearEndDate || '2027-05-31';
     appState.currentWeekNumber = initial.currentWeekNumber || 7;
     appState.selectedWeekNumber = 7;
-    appState.rooms = initial.rooms || [];
-    appState.classes = initial.classes || [];
+    appState.periodTimes = initial.periodTimes || JSON.parse(JSON.stringify(PERIOD_TIMES_DEFAULT));
+    appState.rooms = (initial.rooms || []).map(normalizeRoomItem);
+    appState.classes = (initial.classes || []).map(normalizeClassItem);
     appState.subjects = initial.subjects || [];
     appState.users = initial.users || [
       {
         email: 'admin@gmail.com',
+        password: 'admin',
         name: 'Quản Trị Viên Phòng Máy',
         phone: '0988888888',
         role: 'admin',
@@ -145,7 +248,15 @@
     appState.issues = [];
     appState.weekCustomNames = initial.weekCustomNames || {};
     appState.lockedWeeks = {};
+    appState.notificationSettings = initial.notificationSettings || {
+      autoSendEnabled: true,
+      sendHour: 21,
+      sendMinute: 0,
+      messageTemplate: 'Ngày mai lớp {tenLop} thực hành Tiết {tiet} ({gioBatDau} - {gioKetThuc}) tại phòng {tenPhong} vị trí {viTri}.'
+    };
+    appState.notificationLogs = [];
     appState.selectedRoomId = appState.rooms[0]?.id || '';
+    appState.currentUser = null; // Mặc định chưa đăng nhập
     saveState();
   }
 
@@ -158,6 +269,7 @@
         currentWeekNumber: appState.currentWeekNumber,
         selectedWeekNumber: appState.selectedWeekNumber,
         selectedRoomId: appState.selectedRoomId,
+        periodTimes: appState.periodTimes,
         rooms: appState.rooms,
         classes: appState.classes,
         subjects: appState.subjects,
@@ -165,7 +277,9 @@
         bookings: appState.bookings,
         issues: appState.issues,
         weekCustomNames: appState.weekCustomNames,
-        lockedWeeks: appState.lockedWeeks
+        lockedWeeks: appState.lockedWeeks,
+        notificationSettings: appState.notificationSettings,
+        notificationLogs: appState.notificationLogs
       }));
     } catch (e) {
       console.warn('LocalStorage save error:', e);
@@ -259,10 +373,12 @@
 
   // ================= LIVE CLOCK =================
   function initClock() {
+    let lastCheckedHourMinute = '';
+
     function update() {
+      const now = new Date();
       const clockEl = document.getElementById('headerLiveClock');
       if (clockEl) {
-        const now = new Date();
         const d = String(now.getDate()).padStart(2, '0');
         const m = String(now.getMonth() + 1).padStart(2, '0');
         const y = now.getFullYear();
@@ -270,9 +386,25 @@
         const mm = String(now.getMinutes()).padStart(2, '0');
         clockEl.textContent = `${d}/${m}/${y} - ${hh}:${mm}`;
       }
+
+      // TỰ ĐỘNG GỬI THÔNG BÁO THEO LỊCH CÀI ĐẶT CỦA ADMIN
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const hmKey = `${now.toDateString()}_${currentHour}:${currentMinute}`;
+
+      const autoEnabled = appState.notificationSettings?.autoSendEnabled ?? true;
+      const cfgHour = Number(appState.notificationSettings?.sendHour ?? 21);
+      const cfgMinute = Number(appState.notificationSettings?.sendMinute ?? 0);
+      const cfgTarget = appState.notificationSettings?.sendTarget || 'tomorrow';
+
+      if (autoEnabled && currentHour === cfgHour && currentMinute === cfgMinute && lastCheckedHourMinute !== hmKey) {
+        lastCheckedHourMinute = hmKey;
+        console.log(`[LabMaster] Kích hoạt tiến trình tự động phát thông báo lúc ${cfgHour}:${String(cfgMinute).padStart(2, '0')} (Mục tiêu: ${cfgTarget})`);
+        executeAutomatedDispatch(cfgTarget);
+      }
     }
     update();
-    setInterval(update, 30000);
+    setInterval(update, 10000); // Kiểm tra mỗi 10 giây
   }
 
   // ================= MASTER RENDER =================
@@ -284,7 +416,30 @@
   }
 
   function renderUserBar() {
-    const u = appState.currentUser || {};
+    const u = appState.currentUser;
+    const guestContainer = document.getElementById('userAuthGuestContainer');
+    const loggedInContainer = document.getElementById('userAuthLoggedInContainer');
+    const adminTab = document.getElementById('tabBtn-admin');
+
+    if (!u) {
+      // CHẾ ĐỘ KHÁCH / CHƯA ĐĂNG NHẬP
+      if (guestContainer) guestContainer.classList.remove('hidden');
+      if (loggedInContainer) loggedInContainer.classList.add('hidden');
+
+      // BẢO VỆ PHÂN QUYỀN: Khách hoặc chưa đăng nhập TUYỆT ĐỐI KHÔNG hiển thị thẻ Quản trị
+      if (adminTab) {
+        adminTab.classList.add('hidden');
+        if (appState.activeView === 'admin') {
+          switchView('today');
+        }
+      }
+      return;
+    }
+
+    // ĐÃ ĐĂNG NHẬP (GIÁO VIÊN HOẶC ADMIN)
+    if (guestContainer) guestContainer.classList.add('hidden');
+    if (loggedInContainer) loggedInContainer.classList.remove('hidden');
+
     const avatarEl = document.getElementById('userAvatarImg');
     const nameEl = document.getElementById('userNameTxt');
     const emailEl = document.getElementById('userEmailTxt');
@@ -317,13 +472,14 @@
         : '<i class="fa-solid fa-user-check"></i> Giáo viên bộ môn';
     }
 
-    // BẢO VỆ PHÂN QUYỀN: Giáo viên KHÔNG THỂ nhìn thấy tab Quản Trị
-    const adminTab = document.getElementById('tabBtn-admin');
+    // BẢO VỆ PHÂN QUYỀN: Chỉ tài khoản Admin mới hiển thị thẻ Quản trị
     if (adminTab) {
       if (isAdmin) {
-        adminTab.classList.remove('hidden');
+        adminTab.className = appState.activeView === 'admin'
+          ? 'px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition bg-purple-600 text-white shadow-md ml-auto'
+          : 'px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-purple-700 bg-purple-50/80 hover:bg-purple-100 border border-purple-200/80 ml-auto';
       } else {
-        adminTab.classList.add('hidden');
+        adminTab.className = 'hidden';
         if (appState.activeView === 'admin') {
           switchView('today');
         }
@@ -364,10 +520,12 @@
 
   // ================= VIEW SWITCHER =================
   window.switchView = function (viewName) {
-    // Nếu không phải admin mà cố vào admin thì chặn lại
-    if (viewName === 'admin' && appState.currentUser?.role !== 'admin') {
+    const isAdmin = appState.currentUser?.role === 'admin';
+
+    // Nếu không phải admin mà cố vào admin thì chặn lại và về trang today
+    if (viewName === 'admin' && !isAdmin) {
       alert('Bạn không có quyền truy cập khu vực Quản trị hệ thống!');
-      return;
+      viewName = 'today';
     }
 
     appState.activeView = viewName;
@@ -375,6 +533,13 @@
     ['today', 'timetable', 'standardTable', 'admin'].forEach(tab => {
       const btn = document.getElementById(`tabBtn-${tab}`);
       const viewEl = document.getElementById(`view-${tab}`);
+
+      // BẢO VỆ PHÂN QUYỀN TUYỆT ĐỐI: Thẻ Admin chỉ hiển thị khi tài khoản có quyền Admin
+      if (tab === 'admin' && !isAdmin) {
+        if (btn) btn.className = 'hidden';
+        if (viewEl) viewEl.classList.add('hidden');
+        return;
+      }
 
       if (btn) {
         if (tab === viewName) {
@@ -431,9 +596,13 @@
 
   function renderTodayView() {
     const classFilter = document.getElementById('todayFilterClass');
-    if (classFilter && classFilter.options.length <= 1) {
+    if (classFilter) {
+      const curVal = classFilter.value || 'all';
       classFilter.innerHTML = '<option value="all">Tất cả các lớp học sinh</option>' +
-        appState.classes.map(c => `<option value="${c}">${c}</option>`).join('');
+        appState.classes.map(c => {
+          const cName = typeof c === 'string' ? c : c.name;
+          return `<option value="${cName}" ${cName === curVal ? 'selected' : ''}>${cName}</option>`;
+        }).join('');
     }
 
     const roomFilter = document.getElementById('todayFilterRoom');
@@ -547,7 +716,7 @@
     let html = '';
 
     for (let p = 1; p <= 5; p++) {
-      const timeStr = PERIOD_TIMES[session][p];
+      const timeStr = getPeriodTimeRange(session, p);
       const roomsToDisplay = selectedRoom === 'all'
         ? appState.rooms
         : appState.rooms.filter(r => r.name === selectedRoom);
@@ -682,13 +851,15 @@
     const locked = isWeekLocked(week);
 
     for (let period = 1; period <= 5; period++) {
-      const timeStr = PERIOD_TIMES[session][period];
+      const pTime = getPeriodTime(session, period);
 
       html += `<tr class="hover:bg-slate-50/50 transition">`;
       html += `
-        <td class="py-3 px-2 text-center border-r border-slate-200 bg-slate-50/80">
-          <span class="block font-black text-slate-800 text-sm">Tiết ${period}</span>
-          <span class="block text-[10px] text-slate-400 font-mono mt-0.5">${timeStr}</span>
+        <td class="py-2.5 px-2 text-center border-r border-slate-200 bg-slate-50/80 font-mono select-none">
+          <span class="block font-black text-slate-800 text-xs sm:text-sm">Tiết ${period}</span>
+          <span class="block text-[10px] text-slate-600 font-bold leading-tight mt-1">${pTime.start}</span>
+          <span class="block text-[9px] text-slate-400 leading-none">-</span>
+          <span class="block text-[10px] text-slate-600 font-bold leading-tight">${pTime.end}</span>
         </td>
       `;
 
@@ -733,7 +904,14 @@
             </div>
           `;
         } else {
-          if (locked) {
+          if (!appState.currentUser) {
+            html += `
+              <button onclick="quickOpenBooking('${session}', ${day}, ${period})" class="w-full h-full rounded-xl border border-dashed border-slate-200/80 hover:border-slate-300 bg-slate-50/20 hover:bg-slate-50/60 text-slate-300 hover:text-slate-500 flex flex-col items-center justify-center transition group p-1" title="Nhấp để đăng nhập và đăng ký tiết này">
+                <i class="fa-solid fa-door-open text-xs mb-1 text-slate-300 group-hover:scale-110 transition-transform"></i>
+                <span class="text-[10px] text-slate-400 group-hover:text-slate-600 font-medium">Trống</span>
+              </button>
+            `;
+          } else if (locked) {
             html += `
               <div class="h-full rounded-xl border border-dashed border-slate-200 bg-slate-50/50 flex flex-col items-center justify-center text-slate-300 text-center p-2">
                 <i class="fa-solid fa-lock text-xs mb-1"></i>
@@ -863,15 +1041,15 @@
     if (appState.currentUser?.role !== 'admin') return;
     appState.adminActiveSubTab = tabName;
 
-    ['rooms', 'classes', 'users', 'weeks'].forEach(t => {
+    ['rooms', 'classes', 'users', 'weeks', 'periods', 'notifications'].forEach(t => {
       const btn = document.getElementById(`adminTabBtn-${t}`);
       const panel = document.getElementById(`adminPanel-${t}`);
 
       if (btn) {
         if (t === tabName) {
-          btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-white text-purple-700 shadow-sm border border-slate-200 flex items-center gap-2';
+          btn.className = 'px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-purple-700 shadow-sm border border-slate-200 flex items-center gap-2 whitespace-nowrap';
         } else {
-          btn.className = 'px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2';
+          btn.className = 'px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 whitespace-nowrap';
         }
       }
 
@@ -890,6 +1068,10 @@
     renderAdminClassesList();
     renderAdminUsersList();
     renderAdminWeeksList();
+    renderPeriodsConfigUI();
+    renderNotificationSettingsUI();
+    renderNotificationsPreview();
+    renderNotificationLogs();
   }
 
   // SUB-TAB 1: ROOMS
@@ -914,7 +1096,7 @@
           <i class="fa-solid fa-chalkboard text-brand-600"></i>
           <span>${r.name}</span>
         </td>
-        <td class="py-2.5 px-3 text-slate-600">${r.fullName || '—'}</td>
+        <td class="py-2.5 px-3 text-slate-600 font-medium">${r.location || r.fullName || '—'}</td>
         <td class="py-2.5 px-3 text-center font-bold text-slate-800">${r.totalComputers || 0} máy</td>
         <td class="py-2.5 px-3 text-slate-600">${r.projector || '—'}</td>
         <td class="py-2.5 px-3 text-slate-700">${r.managerName || '—'}</td>
@@ -950,7 +1132,7 @@
     document.getElementById('roomEditId').value = r.id;
     document.getElementById('roomModalTitle').textContent = 'Chỉnh Sửa Thông Tin Phòng';
     document.getElementById('roomNameInput').value = r.name;
-    document.getElementById('roomLocationInput').value = r.fullName || '';
+    document.getElementById('roomLocationInput').value = r.location || r.fullName || '';
     document.getElementById('roomComputersInput').value = r.totalComputers || 36;
     document.getElementById('roomProjectorInput').value = r.projector || '';
     document.getElementById('roomManagerInput').value = r.managerName || '';
@@ -979,7 +1161,8 @@
       if (r) {
         const oldName = r.name;
         r.name = name;
-        r.fullName = loc || name;
+        r.location = loc || name;
+        r.fullName = `${name} (${loc || 'Tầng 2'})`;
         r.totalComputers = comps;
         r.workingComputers = comps;
         r.projector = proj;
@@ -993,7 +1176,8 @@
       const newRoom = {
         id: `room_${Date.now()}`,
         name: name,
-        fullName: loc || name,
+        location: loc || name,
+        fullName: `${name} (${loc || 'Tầng 2'})`,
         totalComputers: comps,
         workingComputers: comps,
         damagedComputers: 0,
@@ -1028,76 +1212,317 @@
     showToast(`Đã xóa phòng "${r.name}"`);
   };
 
-  // SUB-TAB 2: CLASSES
+  // SUB-TAB 2: KHAI BÁO LỚP THỰC HÀNH & THÔNG TIN LỚP TRƯỞNG (HỖ TRỢ EXCEL)
   function renderAdminClassesList() {
-    const container = document.getElementById('adminClassesPillsContainer');
-    const countTxt = document.getElementById('classesCountTxt');
-    if (!container) return;
-
-    if (countTxt) countTxt.textContent = appState.classes.length;
+    const tbody = document.getElementById('adminClassesTableBody');
+    if (!tbody) return;
 
     if (appState.classes.length === 0) {
-      container.innerHTML = `<span class="text-xs text-slate-400">Chưa có lớp nào được khai báo.</span>`;
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="py-8 text-center text-slate-400">
+            Chưa có lớp nào được khai báo. Vui lòng bấm "+ Khai báo lớp mới" hoặc "Nạp từ Excel"!
+          </td>
+        </tr>
+      `;
       return;
     }
 
-    container.innerHTML = appState.classes.map(c => `
-      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-800 text-xs font-bold border border-slate-200">
-        <span>${c}</span>
-        <button onclick="deleteClass('${c}')" class="text-slate-400 hover:text-red-600 transition" title="Xóa lớp này">
-          <i class="fa-solid fa-xmark text-[11px]"></i>
-        </button>
-      </span>
-    `).join('');
+    tbody.innerHTML = appState.classes.map((c, idx) => {
+      const cName = typeof c === 'string' ? c : c.name;
+      const mName = typeof c === 'object' ? (c.monitorName || '—') : '—';
+      const mPhone = typeof c === 'object' ? (c.monitorPhone || '—') : '—';
+      const mEmail = typeof c === 'object' ? (c.monitorEmail || '—') : '—';
+
+      return `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="py-2.5 px-3 text-center font-bold text-slate-400">${idx + 1}</td>
+          <td class="py-2.5 px-3 font-bold text-slate-900">
+            <span class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 font-black">
+              ${cName}
+            </span>
+          </td>
+          <td class="py-2.5 px-3 font-semibold text-slate-800">
+            <div class="flex items-center gap-1.5">
+              <i class="fa-solid fa-user-graduate text-slate-400"></i>
+              <span>${mName}</span>
+            </div>
+          </td>
+          <td class="py-2.5 px-3 font-mono font-medium text-slate-700">
+            ${mPhone !== '—' && mPhone ? `<a href="tel:${mPhone}" class="text-blue-600 hover:underline"><i class="fa-solid fa-phone mr-1 text-[10px]"></i>${mPhone}</a>` : '<span class="text-slate-400">Chưa có</span>'}
+          </td>
+          <td class="py-2.5 px-3 font-mono text-slate-600">
+            ${mEmail !== '—' && mEmail ? `<a href="mailto:${mEmail}" class="text-indigo-600 hover:underline"><i class="fa-regular fa-envelope mr-1 text-[10px]"></i>${mEmail}</a>` : '<span class="text-slate-400">Chưa có</span>'}
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <div class="inline-flex items-center gap-1">
+              <button onclick="openEditClassModal('${cName}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold transition" title="Chỉnh sửa thông tin lớp và lớp trưởng">
+                <i class="fa-solid fa-pen mr-0.5"></i> Sửa
+              </button>
+              <button onclick="deleteClass('${cName}')" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[10px] font-bold transition" title="Xóa lớp">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
   }
 
-  window.handleBatchAddClasses = function () {
+  window.openAddClassModal = function () {
     if (appState.currentUser?.role !== 'admin') return;
-    const input = document.getElementById('newClassInput');
-    const val = input.value.trim();
-    if (!val) return;
+    document.getElementById('classEditNameOriginal').value = '';
+    document.getElementById('classModalTitle').textContent = 'Khai Báo Lớp Thực Hành Mới';
+    document.getElementById('classNameInput').value = '';
+    document.getElementById('classMonitorNameInput').value = '';
+    document.getElementById('classMonitorPhoneInput').value = '';
+    document.getElementById('classMonitorEmailInput').value = '';
+    document.getElementById('classModal')?.classList.remove('hidden');
+  };
 
-    const items = val.split(/[,;\n]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
-    let addedCount = 0;
+  window.openEditClassModal = function (className) {
+    if (appState.currentUser?.role !== 'admin') return;
+    const cObj = appState.classes.find(c => (typeof c === 'string' ? c : c.name) === className);
+    if (!cObj) return;
 
-    items.forEach(c => {
-      if (!appState.classes.includes(c)) {
-        appState.classes.push(c);
-        addedCount++;
+    document.getElementById('classEditNameOriginal').value = className;
+    document.getElementById('classModalTitle').textContent = `Chỉnh Sửa Lớp: ${className}`;
+    document.getElementById('classNameInput').value = typeof cObj === 'string' ? cObj : cObj.name;
+    document.getElementById('classMonitorNameInput').value = typeof cObj === 'object' ? (cObj.monitorName || '') : '';
+    document.getElementById('classMonitorPhoneInput').value = typeof cObj === 'object' ? (cObj.monitorPhone || '') : '';
+    document.getElementById('classMonitorEmailInput').value = typeof cObj === 'object' ? (cObj.monitorEmail || '') : '';
+    document.getElementById('classModal')?.classList.remove('hidden');
+  };
+
+  window.closeClassModal = function () {
+    document.getElementById('classModal')?.classList.add('hidden');
+  };
+
+  window.handleClassSubmit = function (e) {
+    e.preventDefault();
+    if (appState.currentUser?.role !== 'admin') return;
+
+    const editOriginal = document.getElementById('classEditNameOriginal').value.trim();
+    const name = document.getElementById('classNameInput').value.trim().toUpperCase();
+    const monitorName = document.getElementById('classMonitorNameInput').value.trim();
+    const monitorPhone = document.getElementById('classMonitorPhoneInput').value.trim();
+    const monitorEmail = document.getElementById('classMonitorEmailInput').value.trim();
+
+    if (!name) return;
+
+    const newClassObj = {
+      name,
+      monitorName: monitorName || ('Lớp trưởng ' + name),
+      monitorPhone,
+      monitorEmail
+    };
+
+    if (editOriginal) {
+      const idx = appState.classes.findIndex(c => (typeof c === 'string' ? c : c.name) === editOriginal);
+      if (idx >= 0) {
+        appState.classes[idx] = newClassObj;
       }
-    });
+      if (editOriginal !== name) {
+        // Cập nhật các booking cũ
+        appState.bookings.forEach(b => {
+          if (b.className === editOriginal) b.className = name;
+        });
+      }
+    } else {
+      if (appState.classes.some(c => (typeof c === 'string' ? c : c.name).toUpperCase() === name)) {
+        alert(`Lớp "${name}" đã tồn tại trong danh mục!`);
+        return;
+      }
+      appState.classes.push(newClassObj);
+    }
 
-    appState.classes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    appState.classes.sort((a, b) => (a.name || a).localeCompare(b.name || b, undefined, { numeric: true }));
 
-    input.value = '';
     saveState();
+    closeClassModal();
     renderAll();
-    showToast(`Đã thêm thành công ${addedCount} lớp vào danh sách!`);
+    showToast(`Đã lưu thông tin lớp: ${name}`);
   };
 
   window.deleteClass = function (className) {
     if (appState.currentUser?.role !== 'admin') return;
-    appState.classes = appState.classes.filter(c => c !== className);
+    if (!confirm(`Bạn có chắc muốn xóa lớp "${className}" khỏi danh mục?`)) return;
+    appState.classes = appState.classes.filter(c => (typeof c === 'string' ? c : c.name) !== className);
     saveState();
     renderAll();
+    showToast(`Đã xóa lớp "${className}"`);
   };
 
   window.clearAllClasses = function () {
     if (appState.currentUser?.role !== 'admin') return;
-    if (!confirm('Bạn có chắc chắn muốn xóa tất cả các lớp đã khai báo?')) return;
+    if (!confirm('Bạn có chắc chắn muốn xóa tất cả danh sách lớp đã khai báo?')) return;
     appState.classes = [];
     saveState();
     renderAll();
+    showToast('Đã xóa toàn bộ danh sách lớp');
   };
 
-  // SUB-TAB 3: USERS (BẢO VỆ TUYỆT ĐỐI KHÔNG CHO GV HẠ QUYỀN ADMIN)
+  // NẠP & XUẤT EXCEL CHO DANH SÁCH LỚP & LỚP TRƯỞNG
+  window.downloadSampleClassExcelTemplate = function () {
+    if (typeof XLSX === 'undefined') return;
+
+    const rows = [
+      ['STT', 'Tên Lớp', 'Họ và Tên Lớp Trưởng', 'Số Điện Thoại', 'Email Lớp Trưởng'],
+      [1, '10A1', 'Nguyễn Văn An', '0912345601', 'lop10a1@gmail.com'],
+      [2, '10A2', 'Trần Thị Bình', '0912345602', 'lop10a2@gmail.com'],
+      [3, '11A1', 'Lê Hoàng Cường', '0912345603', 'lop11a1@gmail.com'],
+      [4, '11A2', 'Phạm Thị Dung', '0912345604', 'lop11a2@gmail.com'],
+      [5, '12A1', 'Vũ Minh Đức', '0912345605', 'lop12a1@gmail.com']
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 26 }, { wch: 18 }, { wch: 28 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Mau_Khai_Bao_Lop');
+    XLSX.writeFile(wb, 'Mau_Khai_Bao_Lop_Thuc_Hanh.xlsx');
+  };
+
+  window.openImportClassesModal = function () {
+    if (appState.currentUser?.role !== 'admin') return;
+    const input = document.getElementById('excelClassesFileInput');
+    if (input) input.value = '';
+    document.getElementById('importClassesModal')?.classList.remove('hidden');
+  };
+
+  window.closeImportClassesModal = function () {
+    document.getElementById('importClassesModal')?.classList.add('hidden');
+  };
+
+  window.handleExcelClassesUpload = function (e) {
+    if (appState.currentUser?.role !== 'admin') return;
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (evt) {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        let count = 0;
+        for (let i = 1; i < json.length; i++) {
+          const row = json[i];
+          if (!row || row.length === 0) continue;
+
+          let className = '';
+          let monitorName = '';
+          let monitorPhone = '';
+          let monitorEmail = '';
+
+          // Nhận diện theo cấu trúc: nếu cột 0 là STT số
+          if (row.length >= 2 && !isNaN(Number(row[0])) && String(row[1]).trim()) {
+            className = String(row[1]).trim().toUpperCase();
+            monitorName = String(row[2] || '').trim();
+            monitorPhone = String(row[3] || '').trim();
+            monitorEmail = String(row[4] || '').trim();
+          } else {
+            className = String(row[0] || '').trim().toUpperCase();
+            monitorName = String(row[1] || '').trim();
+            monitorPhone = String(row[2] || '').trim();
+            monitorEmail = String(row[3] || '').trim();
+          }
+
+          if (!className) continue;
+          if (!monitorName) monitorName = 'Lớp trưởng ' + className;
+
+          const existingIdx = appState.classes.findIndex(c => (typeof c === 'string' ? c : c.name).toUpperCase() === className);
+          const classObj = {
+            name: className,
+            monitorName: monitorName,
+            monitorPhone: monitorPhone,
+            monitorEmail: monitorEmail
+          };
+
+          if (existingIdx >= 0) {
+            appState.classes[existingIdx] = classObj;
+          } else {
+            appState.classes.push(classObj);
+          }
+          count++;
+        }
+
+        appState.classes.sort((a, b) => (a.name || a).localeCompare(b.name || b, undefined, { numeric: true }));
+
+        saveState();
+        closeImportClassesModal();
+        renderAll();
+        showToast(`Đã nạp thành công ${count} lớp học từ file Excel!`);
+      } catch (err) {
+        console.error('Lỗi đọc file Excel lớp:', err);
+        alert('Lỗi nạp file Excel: Vui lòng kiểm tra lại định dạng file!');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  window.exportClassesToExcel = function () {
+    if (typeof XLSX === 'undefined') return;
+
+    const rows = [
+      ['STT', 'Tên Lớp', 'Họ và Tên Lớp Trưởng', 'Số Điện Thoại', 'Email Lớp Trưởng']
+    ];
+
+    appState.classes.forEach((c, idx) => {
+      const cName = typeof c === 'string' ? c : c.name;
+      const mName = typeof c === 'object' ? (c.monitorName || '') : '';
+      const mPhone = typeof c === 'object' ? (c.monitorPhone || '') : '';
+      const mEmail = typeof c === 'object' ? (c.monitorEmail || '') : '';
+      rows.push([idx + 1, cName, mName, mPhone, mEmail]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 26 }, { wch: 18 }, { wch: 28 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Danh_Sach_Lop');
+    XLSX.writeFile(wb, 'Danh_Sach_Lop_Thuc_Hanh_2026_2027.xlsx');
+    showToast('Đã xuất danh sách lớp ra file Excel!');
+  };
+
+  // SUB-TAB 3: USERS (QUẢN LÝ TÀI KHOẢN, MẬT KHẨU & PHÂN QUYỀN GMAIL)
   function renderAdminUsersList() {
     const tbody = document.getElementById('adminUsersTableBody');
     if (!tbody) return;
 
-    tbody.innerHTML = appState.users.map(u => {
+    tbody.innerHTML = appState.users.map((u, idx) => {
       const isAdmin = u.role === 'admin';
       const isSelf = u.email === appState.currentUser?.email;
+      const isCustomPass = Boolean(u.isCustomPassword && !isAdmin);
+      const userPass = u.password || (isAdmin ? 'admin' : '123');
+
+      // MẬT KHẨU BẢO MẬT:
+      // Khi giáo viên tự đổi mật khẩu riêng -> Admin TUYỆT ĐỐI KHÔNG THỂ XEM
+      let passHtml = '';
+      if (isCustomPass) {
+        passHtml = `
+          <div class="inline-flex items-center gap-1.5 flex-wrap">
+            <span class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-lg text-[11px] font-semibold" title="Giáo viên đã tự đổi mật khẩu riêng tư. Quản trị viên không thể xem theo chính sách bảo mật.">
+              <i class="fa-solid fa-shield-halved text-emerald-600 text-[10px]"></i>
+              <span>Đã đổi riêng</span>
+              <span class="text-[10px] text-emerald-600 font-normal">(Bảo mật)</span>
+            </span>
+            <button type="button" onclick="openAdminResetPassModal('${u.email}')" class="px-1.5 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 text-[10px] font-bold transition flex items-center gap-1" title="Cấp lại mật khẩu mới cho giáo viên khi quên mật khẩu">
+              <i class="fa-solid fa-rotate-left text-[9px]"></i> Cấp lại
+            </button>
+          </div>
+        `;
+      } else {
+        // Mật khẩu do Admin cấp ban đầu hoặc tài khoản Admin: Có thể xem/ẩn
+        passHtml = `
+          <div class="inline-flex items-center gap-1.5 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 text-slate-700 text-[11px]">
+            <span id="passSpan_${idx}" class="font-bold">••••••</span>
+            <button type="button" onclick="toggleUserPassDisplay(${idx}, '${userPass.replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-brand-600 p-0.5" title="Xem/Ẩn mật khẩu">
+              <i id="passEyeIcon_${idx}" class="fa-solid fa-eye text-[10px]"></i>
+            </button>
+          </div>
+        `;
+      }
 
       return `
         <tr class="hover:bg-slate-50 transition">
@@ -1106,30 +1531,58 @@
             <span>${u.name}</span>
           </td>
           <td class="py-2.5 px-3 font-mono text-slate-700">${u.email}</td>
+          <td class="py-2.5 px-3 font-mono">
+            ${passHtml}
+          </td>
           <td class="py-2.5 px-3 font-mono text-slate-500">${u.phone || '—'}</td>
           <td class="py-2.5 px-3 text-slate-600">${u.department || 'Giáo viên'}</td>
           <td class="py-2.5 px-3 text-center">
             ${isAdmin
-              ? '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">Admin Quản trị</span>'
-              : '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">Giáo viên</span>'
+              ? '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200"><i class="fa-solid fa-shield-halved mr-1"></i>Admin</span>'
+              : '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200"><i class="fa-solid fa-user-tie mr-1"></i>Giáo viên</span>'
             }
           </td>
           <td class="py-2.5 px-3 text-center">
-            ${!isSelf ? `
-              <button onclick="toggleUserRole('${u.email}')" class="px-2 py-1 rounded text-[10px] font-semibold border ${
-                isAdmin ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100'
-              } mr-1">
-                ${isAdmin ? 'Hạ xuống GV' : 'Phong Admin'}
+            <div class="inline-flex items-center gap-1">
+              <button onclick="openEditUserModal('${u.email}')" class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition" title="Chỉnh sửa thông tin & đổi mật khẩu">
+                <i class="fa-solid fa-pen-to-square mr-0.5"></i> Sửa
               </button>
-              <button onclick="deleteUser('${u.email}')" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[10px] font-bold">
-                <i class="fa-solid fa-trash"></i>
-              </button>
-            ` : '<span class="text-slate-300 text-[10px]">(Đang dùng - Không thể đổi)</span>'}
+              ${!isSelf ? `
+                <button onclick="toggleUserRole('${u.email}')" class="px-2 py-1 rounded text-[10px] font-semibold border ${
+                  isAdmin ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100'
+                }" title="Chuyển quyền">
+                  ${isAdmin ? 'Hạ GV' : 'Lên Admin'}
+                </button>
+                <button onclick="deleteUser('${u.email}')" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[10px] font-bold transition" title="Xóa tài khoản">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              ` : '<span class="text-slate-300 text-[10px] italic px-1">(Đang dùng)</span>'}
+            </div>
           </td>
         </tr>
       `;
     }).join('');
   }
+
+  window.toggleUserPassDisplay = function (idx, pass) {
+    const span = document.getElementById(`passSpan_${idx}`);
+    const icon = document.getElementById(`passEyeIcon_${idx}`);
+    if (!span) return;
+    if (span.textContent === '••••••') {
+      span.textContent = pass;
+      if (icon) icon.className = 'fa-solid fa-eye-slash text-[10px] text-brand-600';
+    } else {
+      span.textContent = '••••••';
+      if (icon) icon.className = 'fa-solid fa-eye text-[10px] text-slate-400';
+    }
+  };
+
+  window.generateRandomPassword = function () {
+    const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    const pass = 'gv' + randomDigits;
+    const input = document.getElementById('userPasswordInput');
+    if (input) input.value = pass;
+  };
 
   window.openAddUserModal = function () {
     if (appState.currentUser?.role !== 'admin') return;
@@ -1137,9 +1590,58 @@
     document.getElementById('userModalTitle').textContent = 'Khai Báo Tài Khoản Người Dùng Mới';
     document.getElementById('userNameInput').value = '';
     document.getElementById('userEmailInput').value = '';
+    const passInput = document.getElementById('userPasswordInput');
+    if (passInput) {
+      passInput.value = '123';
+      passInput.required = true;
+      passInput.placeholder = 'Nhập mật khẩu (ví dụ: 123456)...';
+    }
+    const passHint = document.getElementById('userPassHint');
+    if (passHint) {
+      passHint.innerHTML = '<span class="text-slate-400">Admin cấp mật khẩu này cho giáo viên để đăng nhập hệ thống</span>';
+    }
     document.getElementById('userPhoneInput').value = '';
     document.getElementById('userDeptInput').value = 'Tổ Tin học';
     document.getElementById('userRoleSelect').value = 'teacher';
+    document.getElementById('userModal')?.classList.remove('hidden');
+  };
+
+  window.openEditUserModal = function (email) {
+    if (appState.currentUser?.role !== 'admin') return;
+    const u = appState.users.find(x => x.email === email);
+    if (!u) return;
+
+    document.getElementById('userEditEmailOriginal').value = u.email;
+    document.getElementById('userModalTitle').textContent = `Chỉnh Sửa Tài Khoản: ${u.name}`;
+    document.getElementById('userNameInput').value = u.name;
+    document.getElementById('userEmailInput').value = u.email;
+    document.getElementById('userPhoneInput').value = u.phone || '';
+    document.getElementById('userDeptInput').value = u.department || 'Tổ Tin học';
+    document.getElementById('userRoleSelect').value = u.role || 'teacher';
+
+    const passInput = document.getElementById('userPasswordInput');
+    const passHint = document.getElementById('userPassHint');
+
+    if (u.isCustomPassword && u.role !== 'admin') {
+      if (passInput) {
+        passInput.value = '';
+        passInput.required = false;
+        passInput.placeholder = '[Đã bảo mật - Giáo viên tự đặt mật khẩu riêng]';
+      }
+      if (passHint) {
+        passHint.innerHTML = '<span class="text-amber-600 font-semibold"><i class="fa-solid fa-lock mr-1"></i>Giáo viên đã tự đổi mật khẩu riêng tư nên Admin không thể xem. Để trống nếu muốn giữ nguyên mật khẩu của GV, hoặc nhập mật khẩu mới nếu muốn cấp lại cho GV.</span>';
+      }
+    } else {
+      if (passInput) {
+        passInput.value = u.password || (u.role === 'admin' ? 'admin' : '123');
+        passInput.required = true;
+        passInput.placeholder = 'Nhập mật khẩu (ví dụ: 123456)...';
+      }
+      if (passHint) {
+        passHint.innerHTML = '<span class="text-slate-400">Admin cấp mật khẩu này cho giáo viên để đăng nhập hệ thống</span>';
+      }
+    }
+
     document.getElementById('userModal')?.classList.remove('hidden');
   };
 
@@ -1151,27 +1653,63 @@
     e.preventDefault();
     if (appState.currentUser?.role !== 'admin') return;
 
+    const originalEmail = document.getElementById('userEditEmailOriginal').value.trim().toLowerCase();
     const name = document.getElementById('userNameInput').value.trim();
     const email = document.getElementById('userEmailInput').value.trim().toLowerCase();
+    const enteredPass = document.getElementById('userPasswordInput').value.trim();
     const phone = document.getElementById('userPhoneInput').value.trim();
     const dept = document.getElementById('userDeptInput').value.trim();
     const role = document.getElementById('userRoleSelect').value;
 
     if (!name || !email) return;
 
-    const existingIdx = appState.users.findIndex(u => u.email === email);
+    const targetEmail = originalEmail || email;
+    const existingIdx = appState.users.findIndex(u => u.email === targetEmail);
+    const existingUser = existingIdx >= 0 ? appState.users[existingIdx] : null;
+
+    let finalPass = '123';
+    let isCustom = false;
+
+    if (existingUser) {
+      if (existingUser.isCustomPassword && existingUser.role !== 'admin') {
+        if (!enteredPass) {
+          // Admin để trống: Giữ nguyên mật khẩu riêng của giáo viên
+          finalPass = existingUser.password;
+          isCustom = true;
+        } else {
+          // Admin nhập mật khẩu mới: Reset về mật khẩu mới do Admin cấp
+          finalPass = enteredPass;
+          isCustom = false;
+        }
+      } else {
+        finalPass = enteredPass || existingUser.password || (role === 'admin' ? 'admin' : '123');
+        isCustom = false;
+      }
+    } else {
+      finalPass = enteredPass || (role === 'admin' ? 'admin' : '123');
+      isCustom = false;
+    }
+
     const userData = {
       email: email,
+      password: finalPass,
+      isCustomPassword: isCustom,
       name: name,
       phone: phone,
       department: dept,
       role: role,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+      avatar: (existingUser && existingUser.avatar)
+        ? existingUser.avatar
+        : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
       signature: name
     };
 
     if (existingIdx >= 0) {
       appState.users[existingIdx] = userData;
+      if (appState.currentUser?.email === targetEmail) {
+        appState.currentUser = userData;
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userData));
+      }
     } else {
       appState.users.push(userData);
     }
@@ -1179,7 +1717,8 @@
     saveState();
     closeUserModal();
     renderAll();
-    showToast(`Đã lưu tài khoản Gmail: ${email}`);
+    const passToast = isCustom ? '[Đã bảo mật riêng tư]' : finalPass;
+    showToast(`Đã lưu tài khoản: ${email} (Mật khẩu: ${passToast})`);
   };
 
   window.deleteUser = function (email) {
@@ -1230,15 +1769,15 @@
     if (typeof XLSX === 'undefined') return;
 
     const rows = [
-      ['Họ và tên', 'Gmail', 'Số điện thoại', 'Tổ bộ môn', 'Vai trò (admin/giáo viên)'],
-      ['Thầy Phạm Đình Thanh', 'thanh.gv@gmail.com', '0912345678', 'Tổ Tin học', 'giáo viên'],
-      ['Cô Vũ Thị Ý', 'vuthi.y@gmail.com', '0987654321', 'Tổ Tin học', 'giáo viên'],
-      ['Thầy Hoàng Quốc Việt', 'admin@gmail.com', '0905555555', 'Ban Giám Hiệu', 'admin']
+      ['Họ và tên', 'Tài khoản Gmail', 'Mật khẩu', 'Số điện thoại', 'Tổ bộ môn', 'Phân quyền (admin/giáo viên)'],
+      ['Thầy Phạm Đình Thanh', 'thanh.gv@gmail.com', '123', '0912345678', 'Tổ Tin học', 'giáo viên'],
+      ['Cô Vũ Thị Ý', 'vuthi.y@gmail.com', '123', '0987654321', 'Tổ Tin học', 'giáo viên'],
+      ['Quản Trị Viên Phòng Máy', 'admin@gmail.com', 'admin', '0988888888', 'Ban Quản Trị', 'admin']
     ];
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 24 }, { wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 22 }];
+    ws['!cols'] = [{ wch: 24 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 22 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Mau_Danh_Sach_Giao_Vien');
     XLSX.writeFile(wb, 'Mau_Danh_Sach_Giao_Vien_PhongMay.xlsx');
   };
@@ -1263,15 +1802,29 @@
 
           const name = String(row[0] || '').trim();
           const email = String(row[1] || '').trim().toLowerCase();
-          const phone = String(row[2] || '').trim();
-          const dept = String(row[3] || '').trim();
-          const roleStr = String(row[4] || '').toLowerCase().trim();
+          let pass = '123';
+          let phone = '';
+          let dept = '';
+          let roleStr = '';
+
+          if (row.length >= 6) {
+            pass = String(row[2] || '123').trim();
+            phone = String(row[3] || '').trim();
+            dept = String(row[4] || '').trim();
+            roleStr = String(row[5] || '').toLowerCase().trim();
+          } else {
+            phone = String(row[2] || '').trim();
+            dept = String(row[3] || '').trim();
+            roleStr = String(row[4] || '').toLowerCase().trim();
+          }
+
           const role = roleStr.includes('admin') ? 'admin' : 'teacher';
 
           if (name && email.includes('@')) {
             const idx = appState.users.findIndex(u => u.email === email);
             const userObj = {
               email: email,
+              password: pass || (role === 'admin' ? 'admin' : '123'),
               name: name,
               phone: phone,
               department: dept || 'Giáo viên',
@@ -1289,7 +1842,7 @@
         saveState();
         closeImportUsersModal();
         renderAll();
-        showToast(`Đã nạp thành công ${count} tài khoản giáo viên từ file Excel!`);
+        showToast(`Đã nạp thành công ${count} tài khoản từ file Excel!`);
       } catch (err) {
         console.error('Import users error', err);
         alert('Có lỗi khi đọc file Excel. Vui lòng đảm bảo file theo đúng mẫu!');
@@ -1302,14 +1855,17 @@
     if (typeof XLSX === 'undefined') return;
 
     const rows = [
-      ['STT', 'Họ và tên', 'Tài khoản Gmail', 'Số điện thoại', 'Tổ bộ môn', 'Phân quyền']
+      ['STT', 'Họ và tên', 'Tài khoản Gmail', 'Mật khẩu', 'Số điện thoại', 'Tổ bộ môn', 'Phân quyền']
     ];
 
     appState.users.forEach((u, i) => {
+      const isCustomPass = Boolean(u.isCustomPassword && u.role !== 'admin');
+      const passText = isCustomPass ? 'Đã đổi riêng (Bảo mật)' : (u.password || (u.role === 'admin' ? 'admin' : '123'));
       rows.push([
         i + 1,
         u.name,
         u.email,
+        passText,
         u.phone || '',
         u.department || '',
         u.role === 'admin' ? 'Quản trị viên (Admin)' : 'Giáo viên'
@@ -1318,10 +1874,10 @@
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 6 }, { wch: 24 }, { wch: 26 }, { wch: 16 }, { wch: 18 }, { wch: 24 }];
+    ws['!cols'] = [{ wch: 6 }, { wch: 24 }, { wch: 26 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Danh_Sach_Nguoi_Dung');
     XLSX.writeFile(wb, 'DANH_SACH_TAI_KHOAN_GMAIL_PHONG_MAY.xlsx');
-    showToast('Đã xuất danh sách tài khoản Gmail ra file Excel!');
+    showToast('Đã xuất danh sách tài khoản Gmail & Mật khẩu ra file Excel!');
   };
 
   // SUB-TAB 4: WEEKS & CUSTOM NAMES
@@ -1410,10 +1966,1030 @@
 
     appState.bookings = [];
     appState.issues = [];
+    appState.notificationLogs = [];
     saveState();
     renderAll();
     showToast('Đã xóa hết dữ liệu đăng ký thành công!');
   };
+
+  // =========================================================================
+  // SUB-TAB 5: CẤU HÌNH GIỜ CÁC TIẾT HỌC (ADMIN TỰ ĐIỀU CHỈNH)
+  // =========================================================================
+  function renderPeriodsConfigUI() {
+    const sangCont = document.getElementById('periodsConfigContainerSang');
+    const chieuCont = document.getElementById('periodsConfigContainerChieu');
+    if (!sangCont || !chieuCont) return;
+
+    const pTimes = appState.periodTimes || PERIOD_TIMES_DEFAULT;
+
+    // Buổi Sáng (Tiết 1 - 5)
+    let sangHtml = '';
+    for (let p = 1; p <= 5; p++) {
+      const item = (pTimes.sang && pTimes.sang[p]) || { start: '07:15', end: '08:00' };
+      sangHtml += `
+        <div class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-amber-200/80 shadow-2xs hover:border-amber-300 transition">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 font-black flex items-center justify-center text-xs">
+              T${p}
+            </span>
+            <span class="font-bold text-slate-800 text-xs">Tiết ${p} (Buổi Sáng)</span>
+          </div>
+          <div class="flex items-center gap-2 font-mono text-xs">
+            <div class="flex items-center gap-1">
+              <span class="text-[10px] text-slate-400 font-sans">Bắt đầu:</span>
+              <input type="time" id="cfg_sang_${p}_start" value="${item.start}" class="px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 font-bold text-slate-800 focus:bg-white focus:border-amber-500">
+            </div>
+            <span class="text-slate-400 font-bold">-</span>
+            <div class="flex items-center gap-1">
+              <span class="text-[10px] text-slate-400 font-sans">Kết thúc:</span>
+              <input type="time" id="cfg_sang_${p}_end" value="${item.end}" class="px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 font-bold text-slate-800 focus:bg-white focus:border-amber-500">
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    sangCont.innerHTML = sangHtml;
+
+    // Buổi Chiều (Tiết 1 - 5)
+    let chieuHtml = '';
+    for (let p = 1; p <= 5; p++) {
+      const item = (pTimes.chieu && pTimes.chieu[p]) || { start: '13:15', end: '14:00' };
+      chieuHtml += `
+        <div class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-indigo-200/80 shadow-2xs hover:border-indigo-300 transition">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-900 font-black flex items-center justify-center text-xs">
+              T${p}
+            </span>
+            <span class="font-bold text-slate-800 text-xs">Tiết ${p} (Buổi Chiều)</span>
+          </div>
+          <div class="flex items-center gap-2 font-mono text-xs">
+            <div class="flex items-center gap-1">
+              <span class="text-[10px] text-slate-400 font-sans">Bắt đầu:</span>
+              <input type="time" id="cfg_chieu_${p}_start" value="${item.start}" class="px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 font-bold text-slate-800 focus:bg-white focus:border-indigo-500">
+            </div>
+            <span class="text-slate-400 font-bold">-</span>
+            <div class="flex items-center gap-1">
+              <span class="text-[10px] text-slate-400 font-sans">Kết thúc:</span>
+              <input type="time" id="cfg_chieu_${p}_end" value="${item.end}" class="px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 font-bold text-slate-800 focus:bg-white focus:border-indigo-500">
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    chieuCont.innerHTML = chieuHtml;
+  }
+
+  window.savePeriodTimesConfig = function () {
+    if (appState.currentUser?.role !== 'admin') return;
+
+    const newPeriods = { sang: {}, chieu: {} };
+    for (let p = 1; p <= 5; p++) {
+      const sStart = document.getElementById(`cfg_sang_${p}_start`)?.value || '07:15';
+      const sEnd = document.getElementById(`cfg_sang_${p}_end`)?.value || '08:00';
+      newPeriods.sang[p] = { start: sStart, end: sEnd };
+
+      const cStart = document.getElementById(`cfg_chieu_${p}_start`)?.value || '13:15';
+      const cEnd = document.getElementById(`cfg_chieu_${p}_end`)?.value || '14:00';
+      newPeriods.chieu[p] = { start: cStart, end: cEnd };
+    }
+
+    appState.periodTimes = newPeriods;
+    saveState();
+    renderAll();
+    showToast('Đã lưu cấu hình thời gian các tiết học thành công!');
+  };
+
+  window.resetPeriodTimesDefault = function () {
+    if (appState.currentUser?.role !== 'admin') return;
+    if (!confirm('Khôi phục lại khung giờ các tiết học theo chuẩn mặc định của trường?')) return;
+
+    appState.periodTimes = JSON.parse(JSON.stringify(PERIOD_TIMES_DEFAULT));
+    saveState();
+    renderPeriodsConfigUI();
+    renderAll();
+    showToast('Đã khôi phục giờ các tiết học về mặc định!');
+  };
+
+  // =========================================================================
+  // SUB-TAB 6: THỜI GIAN GIAO CHO LỚP (CÀI ĐẶT LỊCH TỰ ĐỘNG & ADMIN GIAO NGAY)
+  // Cú pháp quy định: "Ngày mai lớp thực hành Tiết ..... tại phòng .... vị trí ................"
+  // =========================================================================
+
+  function getTargetScheduleInfo(targetKey = 'tomorrow') {
+    const now = new Date();
+    let targetDate = new Date(now);
+    let syntaxLead = 'Ngày mai';
+    let labelTitle = '';
+    let dayOfWeek = 2;
+    let weekNum = appState.selectedWeekNumber || 1;
+
+    if (targetKey === 'tomorrow') {
+      targetDate.setDate(now.getDate() + 1);
+      syntaxLead = 'Ngày mai';
+    } else if (targetKey === 'today') {
+      syntaxLead = 'Hôm nay';
+    } else if (targetKey.startsWith('day_')) {
+      const targetDow = parseInt(targetKey.replace('day_', ''), 10);
+      weekNum = appState.selectedWeekNumber || 1;
+      const weekObj = appState.generatedWeeks.find(w => w.weekNumber === weekNum) || appState.generatedWeeks[0];
+      if (weekObj && weekObj.dayDates && weekObj.dayDates[targetDow]) {
+        targetDate = new Date(weekObj.dayDates[targetDow].fullDate);
+      }
+      dayOfWeek = targetDow;
+      syntaxLead = `Ngày ${DAY_NAMES[dayOfWeek] || ''} (${targetDate.toLocaleDateString('vi-VN')})`;
+    }
+
+    const y = targetDate.getFullYear();
+    const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const d = String(targetDate.getDate()).padStart(2, '0');
+    const targetDateStr = `${y}-${m}-${d}`;
+    const formattedDisplayDate = `${d}/${m}/${y}`;
+
+    if (!targetKey.startsWith('day_')) {
+      const matchedWeek = appState.generatedWeeks.find(w => targetDateStr >= w.startDate && targetDateStr <= w.endDate);
+      weekNum = matchedWeek ? matchedWeek.weekNumber : (appState.selectedWeekNumber || 1);
+      const jsDay = targetDate.getDay();
+      dayOfWeek = jsDay === 0 ? 8 : (jsDay + 1); // 2..7, 8=CN
+    }
+
+    const weekObj = appState.generatedWeeks.find(w => w.weekNumber === weekNum) || appState.generatedWeeks[0];
+    const dayName = DAY_NAMES[dayOfWeek] || (dayOfWeek === 8 ? 'Chủ nhật' : `Thứ ${dayOfWeek}`);
+
+    if (targetKey === 'tomorrow') {
+      labelTitle = `Lịch Ngày Mai: ${dayName} (${formattedDisplayDate}) - Tuần ${weekNum}`;
+    } else if (targetKey === 'today') {
+      labelTitle = `Lịch Hôm Nay: ${dayName} (${formattedDisplayDate}) - Tuần ${weekNum}`;
+    } else {
+      labelTitle = `Lịch ${dayName} (${formattedDisplayDate}) - Tuần ${weekNum}`;
+    }
+
+    const bookings = appState.bookings.filter(b => b.week === weekNum && b.dayOfWeek === dayOfWeek);
+
+    return {
+      targetKey,
+      targetDate,
+      targetDateStr,
+      formattedDisplayDate,
+      weekNum,
+      weekObj,
+      dayOfWeek,
+      dayName,
+      labelTitle,
+      syntaxLead,
+      bookings
+    };
+  }
+
+  function groupBookingsByClass(targetInfo) {
+    const classesMap = {};
+
+    targetInfo.bookings.forEach(b => {
+      const cName = b.className;
+      if (!classesMap[cName]) {
+        classesMap[cName] = [];
+      }
+      classesMap[cName].push(b);
+    });
+
+    const result = [];
+    Object.keys(classesMap).sort().forEach(cName => {
+      const bList = classesMap[cName];
+      // Sắp xếp theo buổi và tiết
+      bList.sort((a, b) => {
+        if (a.session !== b.session) return a.session === 'sang' ? -1 : 1;
+        return a.period - b.period;
+      });
+
+      // Lấy thông tin lớp & lớp trưởng
+      const cObj = appState.classes.find(c => (typeof c === 'string' ? c : c.name) === cName);
+      const monitorName = typeof cObj === 'object' ? (cObj.monitorName || `Lớp trưởng ${cName}`) : `Lớp trưởng ${cName}`;
+      const monitorPhone = typeof cObj === 'object' ? (cObj.monitorPhone || '') : '';
+      const monitorEmail = typeof cObj === 'object' ? (cObj.monitorEmail || '') : '';
+
+      // Gom tiết
+      const periodsList = bList.map(b => {
+        const sessionName = b.session === 'sang' ? 'Sáng' : 'Chiều';
+        const pRange = getPeriodTimeRange(b.session, b.period);
+        return `Tiết ${b.period} (${sessionName}: ${pRange})`;
+      });
+      const periodsStr = periodsList.join(', ');
+
+      // Gom phòng & vị trí
+      const roomsList = [];
+      const locationsList = [];
+      const subjectsList = [];
+      const lessonsList = [];
+      const teachersList = [];
+
+      bList.forEach(b => {
+        const rObj = appState.rooms.find(r => r.name === b.room);
+        const rName = rObj?.name || b.room;
+        const rLoc = rObj?.location || rObj?.fullName || 'Tầng 2 - Dãy nhà B';
+        if (!roomsList.includes(rName)) roomsList.push(rName);
+        if (!locationsList.includes(rLoc)) locationsList.push(rLoc);
+        if (b.subject && !subjectsList.includes(b.subject)) subjectsList.push(b.subject);
+        if (b.lesson && !lessonsList.includes(b.lesson)) lessonsList.push(b.lesson);
+        if (b.teacherName && !teachersList.includes(b.teacherName)) teachersList.push(b.teacherName);
+      });
+
+      const roomsStr = roomsList.join(', ');
+      const locationsStr = locationsList.join(', ');
+      const subjectsStr = subjectsList.join(', ') || 'Tin học';
+      const lessonsStr = lessonsList.join(' | ') || 'Thực hành phòng máy';
+      const teachersStr = teachersList.join(', ') || 'Giáo viên bộ môn';
+
+      // Cú pháp đúng theo yêu cầu tuyệt đối của người dùng:
+      // "Ngày mai lớp thực hành Tiết .....tại phòng ....vị trí................"
+      const exactSyntax = `${targetInfo.syntaxLead} lớp thực hành Tiết ${periodsStr} tại phòng ${roomsStr} vị trí ${locationsStr}.`;
+      const fullMessage = `${exactSyntax} (Môn: ${subjectsStr}. Bài dạy: ${lessonsStr}. Giáo viên: ${teachersStr}).`;
+
+      result.push({
+        className: cName,
+        monitorName,
+        monitorPhone,
+        monitorEmail,
+        periodsStr,
+        roomsStr,
+        locationsStr,
+        subjectsStr,
+        lessonsStr,
+        teachersStr,
+        exactSyntax,
+        fullMessage,
+        bookings: bList
+      });
+    });
+
+    return result;
+  }
+
+  // Backward-compatible wrappers
+  function getTomorrowScheduleInfo() {
+    return getTargetScheduleInfo('tomorrow');
+  }
+
+  function groupBookingsByClassForTomorrow(tomorrowInfo) {
+    return groupBookingsByClass(tomorrowInfo || getTargetScheduleInfo('tomorrow'));
+  }
+
+  window.renderNotificationSettingsUI = function () {
+    const enabledInput = document.getElementById('notifAutoSendEnabled');
+    const timeInput = document.getElementById('notifAutoSendTime');
+    const targetSelect = document.getElementById('notifAutoSendTarget');
+    const statusBadge = document.getElementById('notifStatusBadge');
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+
+    const cfg = appState.notificationSettings || {
+      autoSendEnabled: true,
+      sendHour: 21,
+      sendMinute: 0,
+      sendTarget: 'tomorrow'
+    };
+
+    const isEnabled = cfg.autoSendEnabled ?? true;
+    const hour = Number(cfg.sendHour ?? 21);
+    const minute = Number(cfg.sendMinute ?? 0);
+    const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const target = cfg.sendTarget || 'tomorrow';
+
+    if (enabledInput) enabledInput.checked = isEnabled;
+    if (timeInput) timeInput.value = timeStr;
+    if (targetSelect) targetSelect.value = target;
+
+    if (statusBadge) {
+      if (isEnabled) {
+        statusBadge.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Tự động gửi: ${timeStr} (${target === 'tomorrow' ? 'Lịch Ngày mai' : 'Lịch Hôm nay'})
+            </span>
+          </div>
+        `;
+      } else {
+        statusBadge.innerHTML = `
+          <span class="px-3 py-1 rounded-full text-xs font-bold bg-slate-700/80 text-slate-300 border border-slate-600 flex items-center gap-1.5">
+            <i class="fa-solid fa-pause text-amber-400"></i> Đang tắt tự động giao
+          </span>
+        `;
+      }
+    }
+
+    if (dispatchSelect) {
+      const currentSelectedVal = dispatchSelect.value || 'tomorrow';
+      const tomInfo = getTargetScheduleInfo('tomorrow');
+      const todInfo = getTargetScheduleInfo('today');
+      const curWeekNum = appState.selectedWeekNumber || 1;
+      const weekObj = appState.generatedWeeks.find(w => w.weekNumber === curWeekNum) || appState.generatedWeeks[0];
+
+      let opts = `
+        <option value="tomorrow">📅 Lịch Ngày Mai: ${tomInfo.dayName} (${tomInfo.formattedDisplayDate}) - Khuyên dùng</option>
+        <option value="today">⚡ Lịch Hôm Nay: ${todInfo.dayName} (${todInfo.formattedDisplayDate})</option>
+      `;
+
+      if (weekObj && weekObj.dayDates) {
+        for (let d = 2; d <= 7; d++) {
+          const ddInfo = weekObj.dayDates[d];
+          const dName = DAY_NAMES[d] || `Thứ ${d}`;
+          const dStr = ddInfo ? `(${ddInfo.dateStr})` : '';
+          opts += `<option value="day_${d}">🗓️ ${dName} ${dStr} - Tuần ${curWeekNum}</option>`;
+        }
+      }
+
+      dispatchSelect.innerHTML = opts;
+      if (dispatchSelect.querySelector(`option[value="${currentSelectedVal}"]`)) {
+        dispatchSelect.value = currentSelectedVal;
+      } else {
+        dispatchSelect.value = 'tomorrow';
+      }
+    }
+  };
+
+  window.setQuickNotifTime = function (val) {
+    const timeInput = document.getElementById('notifAutoSendTime');
+    if (timeInput) {
+      timeInput.value = val;
+      const hint = document.getElementById('notifAutoSaveHint');
+      if (hint) {
+        hint.textContent = `Đã chọn ${val} (Chưa lưu - bấm "Lưu Cài Đặt")`;
+        hint.className = 'text-[11px] text-amber-500 font-semibold';
+      }
+    }
+  };
+
+  window.updateNotifAutoStatusText = function () {
+    const enabledInput = document.getElementById('notifAutoSendEnabled');
+    const hint = document.getElementById('notifAutoSaveHint');
+    if (hint && enabledInput) {
+      hint.textContent = enabledInput.checked ? 'Đang bật tự động (Chưa lưu - bấm "Lưu Cài Đặt")' : 'Đang tắt tự động (Chưa lưu - bấm "Lưu Cài Đặt")';
+      hint.className = 'text-[11px] text-amber-500 font-semibold';
+    }
+  };
+
+  window.saveNotificationSettings = function () {
+    if (appState.currentUser?.role !== 'admin') {
+      alert('Chỉ quản trị viên (Admin) mới có quyền cài đặt lịch giao thông báo!');
+      return;
+    }
+
+    const enabled = document.getElementById('notifAutoSendEnabled')?.checked ?? true;
+    const timeVal = document.getElementById('notifAutoSendTime')?.value || '21:00';
+    const target = document.getElementById('notifAutoSendTarget')?.value || 'tomorrow';
+
+    const [hStr, mStr] = timeVal.split(':');
+    const sendHour = parseInt(hStr, 10) || 0;
+    const sendMinute = parseInt(mStr, 10) || 0;
+
+    appState.notificationSettings = {
+      ...(appState.notificationSettings || {}),
+      autoSendEnabled: enabled,
+      sendHour,
+      sendMinute,
+      sendTarget: target
+    };
+
+    saveState();
+    renderNotificationSettingsUI();
+
+    const hint = document.getElementById('notifAutoSaveHint');
+    if (hint) {
+      hint.textContent = 'Đã lưu & đồng bộ thành công!';
+      hint.className = 'text-[11px] text-emerald-600 font-semibold';
+    }
+
+    showToast(`Đã lưu cài đặt: ${enabled ? 'BẬT' : 'TẮT'} tự động lúc ${timeVal} (${target === 'tomorrow' ? 'Lịch Ngày mai' : 'Lịch Hôm nay'})`);
+  };
+
+  window.onDispatchTargetChange = function () {
+    renderNotificationsPreview();
+  };
+
+  window.renderNotificationsPreview = function () {
+    const container = document.getElementById('notifCardsContainer');
+    const titleEl = document.getElementById('notifScheduleTitle');
+    const badgeEl = document.getElementById('notifScheduleCountBadge');
+    const readyCountEl = document.getElementById('notifDispatchReadyCount');
+    const syntaxBox = document.getElementById('notifSyntaxPreviewBox');
+    if (!container) return;
+
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (titleEl) {
+      titleEl.innerHTML = `<i class="fa-solid fa-calendar-day text-brand-600"></i> ${info.labelTitle}`;
+    }
+
+    if (badgeEl) {
+      badgeEl.textContent = `${classGroups.length} lớp thực hành`;
+      badgeEl.className = classGroups.length > 0
+        ? 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300'
+        : 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200';
+    }
+
+    if (readyCountEl) {
+      readyCountEl.innerHTML = classGroups.length > 0
+        ? `<span class="text-emerald-700 font-bold"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Sẵn sàng gửi: ${classGroups.length} lớp</span>`
+        : `<span class="text-slate-400 font-medium">Không có lớp nào có lịch</span>`;
+    }
+
+    if (syntaxBox) {
+      syntaxBox.innerHTML = `"${info.syntaxLead} lớp thực hành Tiết <span class="text-brand-600 font-bold">[Tiết]</span> tại phòng <span class="text-purple-600 font-bold">[Tên phòng]</span> vị trí <span class="text-emerald-600 font-bold">[Vị trí/Khu nhà]</span>."`;
+    }
+
+    if (classGroups.length === 0) {
+      container.innerHTML = `
+        <div class="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-500 text-xs">
+          <i class="fa-regular fa-calendar-xmark text-2xl text-slate-400 mb-2 block"></i>
+          Trong ${info.labelTitle} chưa có lớp nào đăng ký lịch thực hành phòng máy.<br>
+          <span class="text-[11px] text-slate-400">Khi giáo viên đăng ký tiết vào ngày này, danh sách lớp và nội dung thông báo sẽ tự động cập nhật tại đây.</span>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = classGroups.map(cg => `
+      <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 hover:border-brand-300 transition space-y-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-1 rounded-xl bg-brand-600 text-white font-black text-xs shadow-xs">
+              Lớp ${cg.className}
+            </span>
+            <span class="font-bold text-slate-800 text-xs">
+              Lớp trưởng: <span class="text-indigo-700 font-bold">${cg.monitorName}</span>
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs font-mono">
+            ${cg.monitorPhone ? `
+              <span class="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold">
+                <i class="fa-solid fa-phone text-emerald-600 mr-1"></i>${cg.monitorPhone}
+              </span>
+            ` : '<span class="text-amber-600 text-[11px] font-sans italic">Chưa có SĐT</span>'}
+
+            ${cg.monitorEmail ? `
+              <span class="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700">
+                <i class="fa-regular fa-envelope text-indigo-600 mr-1"></i>${cg.monitorEmail}
+              </span>
+            ` : '<span class="text-amber-600 text-[11px] font-sans italic">Chưa có Email</span>'}
+          </div>
+        </div>
+
+        <!-- Cú pháp thông báo hiển thị cho lớp này -->
+        <div class="p-3 bg-white rounded-xl border border-indigo-100 font-mono text-xs text-slate-800 shadow-2xs">
+          <p class="font-bold text-slate-900">${cg.exactSyntax}</p>
+          <p class="text-[11px] text-slate-500 mt-1 font-sans">
+            Môn học: <strong>${cg.subjectsStr}</strong> | Bài dạy: <em>${cg.lessonsStr}</em> | GV: <strong>${cg.teachersStr}</strong>
+          </p>
+        </div>
+
+        <!-- Nút gửi / thao tác nhanh (Nhóm Zalo & Email) -->
+        <div class="flex items-center justify-end gap-2 flex-wrap pt-1 border-t border-slate-200/60">
+          <button onclick="copyNotificationText('${encodeURIComponent(cg.fullMessage)}')" class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+            <i class="fa-regular fa-copy text-slate-500"></i> Sao chép nội dung
+          </button>
+
+          ${cg.monitorPhone ? `
+            <button onclick="openZaloChatWithCopy('${cg.monitorPhone}', '${encodeURIComponent(cg.fullMessage)}')" type="button" class="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+              <i class="fa-solid fa-paper-plane"></i> Mở Zalo Lớp trưởng
+            </button>
+          ` : ''}
+
+          ${cg.monitorEmail ? `
+            <a href="mailto:${cg.monitorEmail}?subject=${encodeURIComponent(`[LabMaster] Thông báo lịch thực hành phòng máy - Lớp ${cg.className}`)}&body=${encodeURIComponent(cg.fullMessage)}" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition flex items-center gap-1.5">
+              <i class="fa-solid fa-envelope"></i> Gửi Email
+            </a>
+          ` : ''}
+        </div>
+      </div>
+    `).join('');
+  };
+
+  // Backward-compatible alias
+  window.renderTomorrowNotificationsPreview = function() {
+    window.renderNotificationsPreview();
+  };
+
+  
+  // ================= CÔNG CỤ TỰ ĐỘNG HÓA GỬI ZALO (GIẢI PHÁP 3) =================
+  
+  // =========================================================================
+  // PHƯƠNG ÁN 2: GỬI VÀO NHÓM ZALO LỚP TRƯỞNG & GỬI EMAIL ĐỒNG LOẠT
+  // (HOÀN TOÀN KHÔNG DÙNG TIN NHẮN SMS VIỄN THÔNG)
+  // =========================================================================
+
+  function generateZaloGroupSummaryText(targetInfo, classGroups) {
+    if (!classGroups || classGroups.length === 0) {
+      return `[LabMaster] Trong ${targetInfo.labelTitle} không có lớp nào có lịch thực hành phòng máy tính.`;
+    }
+
+    const separator = '──────────────────────────────────────────';
+    let text = `📢 THÔNG BÁO LỊCH THỰC HÀNH PHÒNG MÁY TÍNH\n`;
+    text += `🗓️ ${targetInfo.labelTitle}\n`;
+    text += `${separator}\n\n`;
+
+    classGroups.forEach((cg, idx) => {
+      text += `📌 ${idx + 1}. Lớp ${cg.className} (Lớp trưởng: ${cg.monitorName}${cg.monitorPhone ? ' - SĐT: ' + cg.monitorPhone : ''}):\n`;
+      text += `👉 "${cg.exactSyntax}"\n`;
+      text += `   • Môn học: ${cg.subjectsStr}\n`;
+      text += `   • Bài dạy: ${cg.lessonsStr}\n`;
+      text += `   • Giáo viên: ${cg.teachersStr}\n\n`;
+    });
+
+    text += `${separator}\n`;
+    text += `⚠️ Đề nghị các bạn Lớp trưởng thông báo kịp thời cho lớp, nhắc nhở các bạn có mặt đúng giờ và chấp hành nghiêm túc nội quy phòng máy tính!\n`;
+    text += `Trân trọng,\n`;
+    text += `Ban Quản Trị Phòng Máy Tính.`;
+
+    return text;
+  }
+
+  // 1. GỬI VÀO NHÓM ZALO LỚP TRƯỞNG (PHƯƠNG ÁN 2)
+  window.sendScheduleToZaloGroup = function () {
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) {
+      alert(`Trong ${info.labelTitle} không có lớp nào có lịch thực hành để gửi vào Nhóm Zalo.`);
+      return;
+    }
+
+    const summaryText = generateZaloGroupSummaryText(info, classGroups);
+
+    const now = new Date();
+    const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    appState.notificationLogs.unshift({
+      id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: timeFormatted,
+      className: `Toàn trường (${classGroups.length} lớp)`,
+      monitorName: `Nhóm Zalo Lớp Trưởng`,
+      monitorPhone: '—',
+      monitorEmail: '—',
+      message: `Đã sao chép bản tin tổng hợp lịch ${info.dayName} (${info.formattedDisplayDate}) cho ${classGroups.length} lớp vào Nhóm Zalo`,
+      status: `Nhóm Zalo (${hhmm})`
+    });
+
+    if (appState.notificationLogs.length > 50) {
+      appState.notificationLogs = appState.notificationLogs.slice(0, 50);
+    }
+
+    saveState();
+    renderNotificationLogs();
+
+    navigator.clipboard.writeText(summaryText).then(() => {
+      showToast(`Đã sao chép bản tin của ${classGroups.length} lớp! Đang mở Zalo Web, bạn chỉ cần chọn Nhóm Zalo Lớp Trưởng rồi ấn Ctrl+V và Enter để gửi.`);
+    }).catch(() => {
+      prompt('Bản tin gửi Nhóm Zalo:', summaryText);
+    });
+
+    // Mở Zalo Web
+    window.open('https://chat.zalo.me', '_blank');
+  };
+
+  // 2. SAO CHÉP BẢN TIN NHÓM ZALO
+  window.copyZaloGroupMessage = function () {
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) {
+      alert('Không có lớp nào có lịch thực hành trong ngày đã chọn!');
+      return;
+    }
+
+    const summaryText = generateZaloGroupSummaryText(info, classGroups);
+    navigator.clipboard.writeText(summaryText).then(() => {
+      showToast('Đã sao chép toàn bộ bản tin gửi Nhóm Zalo vào bộ nhớ tạm!');
+    }).catch(() => {
+      prompt('Bản tin gửi Nhóm Zalo:', summaryText);
+    });
+  };
+
+  // 3. GỬI EMAIL ĐỒNG LOẠT CHO TẤT CẢ LỚP TRƯỞNG
+  window.sendBulkEmailToMonitors = function () {
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) {
+      alert(`Trong ${info.labelTitle} không có lớp nào có lịch thực hành để gửi email.`);
+      return;
+    }
+
+    const emailList = classGroups
+      .map(cg => cg.monitorEmail?.trim())
+      .filter(em => em && em.includes('@'));
+
+    if (emailList.length === 0) {
+      alert('Không tìm thấy địa chỉ Email nào của Lớp trưởng trong danh sách các lớp có lịch thực hành. Vui lòng bổ sung email trong mục Khai báo lớp!');
+      return;
+    }
+
+    const subject = `[LabMaster] Thông báo lịch thực hành phòng máy - ${info.labelTitle}`;
+    const bodyLines = [
+      `Kính gửi các bạn Lớp trưởng,`,
+      ``,
+      `Hệ thống LabMaster xin gửi thông báo lịch thực hành phòng máy tính (${info.labelTitle}):`,
+      `──────────────────────────────────────────`,
+      ``,
+      ...classGroups.map((cg, idx) =>
+        `${idx + 1}. Lớp ${cg.className} (Lớp trưởng: ${cg.monitorName}):\n   "${cg.exactSyntax}"\n   • Môn: ${cg.subjectsStr} | Bài dạy: ${cg.lessonsStr} | GV: ${cg.teachersStr}\n`
+      ),
+      `──────────────────────────────────────────`,
+      `Đề nghị các bạn Lớp trưởng thông báo kịp thời cho lớp và nhắc các bạn có mặt đúng giờ.`,
+      ``,
+      `Trân trọng,`,
+      `Ban Quản Trị Phòng Máy Tính`
+    ];
+
+    const body = bodyLines.join('\n');
+
+    const now = new Date();
+    const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    appState.notificationLogs.unshift({
+      id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: timeFormatted,
+      className: `Toàn trường (${emailList.length} email)`,
+      monitorName: `Tất cả Lớp trưởng`,
+      monitorPhone: '—',
+      monitorEmail: emailList.join(', '),
+      message: `Đã mở trình gửi email đồng loạt thông báo lịch ${info.dayName} (${info.formattedDisplayDate}) cho ${emailList.length} lớp trưởng`,
+      status: `Email (${hhmm})`
+    });
+
+    if (appState.notificationLogs.length > 50) {
+      appState.notificationLogs = appState.notificationLogs.slice(0, 50);
+    }
+
+    saveState();
+    renderNotificationLogs();
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(body).catch(() => {});
+    }
+
+    const firstEmail = emailList[0];
+    const bccEmails = emailList.slice(1).join(',');
+    const mailtoUrl = bccEmails
+      ? `mailto:${firstEmail}?bcc=${encodeURIComponent(bccEmails)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+      : `mailto:${firstEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    window.open(mailtoUrl, '_blank');
+    showToast(`Đã mở trình gửi email cho ${emailList.length} lớp trưởng!`);
+  };
+
+  window.openZaloChatWithCopy = function (phone, encodedMessage) {
+    const text = decodeURIComponent(encodedMessage);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`Đã copy tin nhắn! Đang mở Zalo với ${phone}. Bạn chỉ cần bấm Ctrl+V rồi Enter để gửi.`);
+      }).catch(() => {});
+    } else {
+      showToast(`Đang mở Zalo với số điện thoại ${phone}...`);
+    }
+    window.open(`https://zalo.me/${phone}`, '_blank');
+  };
+
+  window.exportZaloDispatchJson = function () {
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) {
+      alert(`Trong ${info.labelTitle} không có lớp nào có lịch thực hành để xuất dữ liệu gửi Zalo.`);
+      return;
+    }
+
+    const data = classGroups.map(cg => ({
+      className: cg.className,
+      monitorName: cg.monitorName,
+      monitorPhone: cg.monitorPhone || '',
+      monitorEmail: cg.monitorEmail || '',
+      message: cg.fullMessage,
+      exactSyntax: cg.exactSyntax,
+      dateInfo: info.formattedDisplayDate
+    }));
+
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'zalo_dispatch.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast(`Đã xuất ${data.length} lớp sang file zalo_dispatch.json! Hãy nhấp đúp file CHAY_AUTO_GUI_ZALO.bat để tự động gửi.`);
+  };
+
+  window.copyZaloDispatchJson = function () {
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) {
+      alert('Không có lớp nào có lịch thực hành để sao chép!');
+      return;
+    }
+
+    const data = classGroups.map(cg => ({
+      className: cg.className,
+      monitorName: cg.monitorName,
+      monitorPhone: cg.monitorPhone || '',
+      monitorEmail: cg.monitorEmail || '',
+      message: cg.fullMessage
+    }));
+
+    const jsonStr = JSON.stringify(data, null, 2);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+      showToast('Đã sao chép dữ liệu JSON vào bộ nhớ tạm! Có thể dán vào công cụ auto.');
+    }).catch(() => {
+      prompt('Dữ liệu JSON:', jsonStr);
+    });
+  };
+
+  window.copyNotificationText = function (encodedText) {
+    const text = decodeURIComponent(encodedText);
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Đã sao chép nội dung thông báo vào bộ nhớ đệm!');
+    }).catch(() => {
+      prompt('Nội dung thông báo:', text);
+    });
+  };
+
+  window.copyAllDispatchedTexts = function () {
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) return;
+
+    const fullStr = classGroups.map(cg =>
+      `• Lớp ${cg.className} (Lớp trưởng: ${cg.monitorName} - SĐT: ${cg.monitorPhone || '—'}):
+  "${cg.exactSyntax}"`
+    ).join("\n\n");
+
+    navigator.clipboard.writeText(fullStr).then(() => {
+      showToast('Đã sao chép toàn bộ danh sách thông báo vào clipboard!');
+    }).catch(() => {
+      prompt('Toàn bộ thông báo:', fullStr);
+    });
+  };
+
+  // ================= ADMIN GIAO THÔNG BÁO NGAY =================
+  window.dispatchNotificationsNow = function () {
+    if (appState.currentUser?.role !== 'admin') {
+      alert('Chỉ Admin mới có quyền thực hiện thao tác Giao thông báo ngay!');
+      return;
+    }
+
+    const dispatchSelect = document.getElementById('notifDispatchTargetSelect');
+    const targetKey = dispatchSelect ? dispatchSelect.value : 'tomorrow';
+
+    const info = getTargetScheduleInfo(targetKey);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) {
+      alert(`Trong ${info.labelTitle} không có lớp nào có lịch thực hành phòng máy để giao thông báo.`);
+      return;
+    }
+
+    const now = new Date();
+    const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    classGroups.forEach(cg => {
+      const logEntry = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        timestamp: timeFormatted,
+        className: cg.className,
+        monitorName: cg.monitorName,
+        monitorPhone: cg.monitorPhone || '—',
+        monitorEmail: cg.monitorEmail || '—',
+        message: cg.fullMessage,
+        status: `Admin giao ngay (${hhmm})`
+      };
+      appState.notificationLogs.unshift(logEntry);
+    });
+
+    if (appState.notificationLogs.length > 50) {
+      appState.notificationLogs = appState.notificationLogs.slice(0, 50);
+    }
+
+    saveState();
+    renderNotificationsPreview();
+    renderNotificationLogs();
+
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification('LabMaster - Đã giao thông báo lịch thực hành!', {
+          body: `Đã phát thông báo đến Lớp trưởng của ${classGroups.length} lớp (${info.labelTitle}).`,
+          icon: 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png'
+        });
+      } catch (e) {
+        console.warn('Browser Notification error:', e);
+      }
+    }
+
+    openDispatchResultModal(info, classGroups);
+  };
+
+  // Backward-compatible alias
+  window.triggerSendTomorrowNotifications = function (isManual = false) {
+    window.dispatchNotificationsNow();
+  };
+
+  window.openDispatchResultModal = function (info, classGroups) {
+    const modal = document.getElementById('dispatchResultModal');
+    if (!modal) {
+      alert(`Đã hoàn tất giao thông báo cho ${classGroups.length} lớp:
+
+` +
+        classGroups.map(cg => `• Lớp ${cg.className} (Lớp trưởng: ${cg.monitorName}):
+  "${cg.exactSyntax}"`).join("\n\n")
+      );
+      return;
+    }
+
+    const titleEl = document.getElementById('dispatchResultModalTitle');
+    const subTitleEl = document.getElementById('dispatchResultModalSubTitle');
+    const container = document.getElementById('dispatchResultModalContent');
+
+    if (titleEl) titleEl.textContent = `Đã Giao Thông Báo Cho ${classGroups.length} Lớp Thực Hành Thành Công!`;
+    if (subTitleEl) subTitleEl.textContent = `${info.labelTitle} • Trực tiếp phát bởi Admin`;
+
+    if (container) {
+      container.innerHTML = classGroups.map(cg => `
+        <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-0.5 rounded-lg bg-brand-600 text-white font-bold text-xs shadow-2xs">Lớp ${cg.className}</span>
+              <span class="font-bold text-slate-800 text-xs">Lớp trưởng: <span class="text-indigo-700">${cg.monitorName}</span></span>
+            </div>
+            <div class="text-[11px] font-mono text-slate-600">
+              ${cg.monitorPhone ? `<span class="mr-2"><i class="fa-solid fa-phone text-emerald-600 mr-1"></i>${cg.monitorPhone}</span>` : ''}
+              ${cg.monitorEmail ? `<span><i class="fa-regular fa-envelope text-indigo-600 mr-1"></i>${cg.monitorEmail}</span>` : ''}
+            </div>
+          </div>
+          <div class="p-2.5 bg-white rounded-lg border border-indigo-100 font-mono text-xs text-slate-800">
+            ${cg.exactSyntax}
+          </div>
+          <div class="flex items-center justify-end gap-2 text-xs pt-1 border-t border-slate-200/50">
+            <button onclick="copyNotificationText('${encodeURIComponent(cg.fullMessage)}')" class="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 font-semibold transition flex items-center gap-1">
+              <i class="fa-regular fa-copy text-slate-400"></i> Sao chép
+            </button>
+            ${cg.monitorPhone ? `
+              <button onclick="openZaloChatWithCopy('${cg.monitorPhone}', '${encodeURIComponent(cg.fullMessage)}')" type="button" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-blue-700 font-bold transition flex items-center gap-1">
+                <i class="fa-solid fa-paper-plane"></i> Mở Zalo
+              </button>
+            ` : ''}
+            ${cg.monitorEmail ? `
+              <a href="mailto:${cg.monitorEmail}?subject=${encodeURIComponent(`[LabMaster] Thông báo lịch thực hành phòng máy - Lớp ${cg.className}`)}&body=${encodeURIComponent(cg.fullMessage)}" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-indigo-700 font-bold transition flex items-center gap-1">
+                <i class="fa-solid fa-envelope"></i> Gửi Email
+              </a>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    modal.classList.remove('hidden');
+  };
+
+  window.closeDispatchResultModal = function () {
+    const modal = document.getElementById('dispatchResultModal');
+    if (modal) modal.classList.add('hidden');
+  };
+
+  // ================= TỰ ĐỘNG GIAO THEO LỊCH HÀNG NGÀY =================
+  window.executeAutomatedDispatch = function (target = 'tomorrow') {
+    const info = getTargetScheduleInfo(target);
+    const classGroups = groupBookingsByClass(info);
+
+    if (classGroups.length === 0) {
+      console.log(`[LabMaster Auto-Dispatch] Không có lớp thực hành nào trong ${info.labelTitle}`);
+      return;
+    }
+
+    const now = new Date();
+    const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const autoHourStr = String(now.getHours()).padStart(2, '0');
+    const autoMinStr = String(now.getMinutes()).padStart(2, '0');
+
+    classGroups.forEach(cg => {
+      const logEntry = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        timestamp: timeFormatted,
+        className: cg.className,
+        monitorName: cg.monitorName,
+        monitorPhone: cg.monitorPhone || '—',
+        monitorEmail: cg.monitorEmail || '—',
+        message: cg.fullMessage,
+        status: `Tự động ${autoHourStr}:${autoMinStr}`
+      };
+      appState.notificationLogs.unshift(logEntry);
+    });
+
+    if (appState.notificationLogs.length > 50) {
+      appState.notificationLogs = appState.notificationLogs.slice(0, 50);
+    }
+
+    saveState();
+    renderNotificationsPreview();
+    renderNotificationLogs();
+
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(`LabMaster - Tự động phát thông báo (${autoHourStr}:${autoMinStr})`, {
+          body: `Đã tự động gửi thông báo đến Lớp trưởng của ${classGroups.length} lớp (${info.labelTitle}).`,
+          icon: 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png'
+        });
+      } catch (e) {
+        console.warn('Browser Notification error:', e);
+      }
+    }
+
+    showToast(`Hệ thống đã tự động giao thông báo cho ${classGroups.length} lớp (${info.labelTitle})!`);
+  };
+
+  window.clearNotificationLogs = function () {
+    if (appState.currentUser?.role !== 'admin') return;
+    if (!confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử thông báo đã phát?')) return;
+    appState.notificationLogs = [];
+    saveState();
+    renderNotificationLogs();
+    showToast('Đã xóa sạch nhật ký phát thông báo!');
+  };
+
+  function renderNotificationLogs() {
+    const tbody = document.getElementById('notifLogsTableBody');
+    if (!tbody) return;
+
+    if (!appState.notificationLogs || appState.notificationLogs.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="py-5 text-center text-slate-400 font-sans">
+            Chưa có lịch sử phát thông báo nào. Khi gửi vào Nhóm Zalo, gửi Email hoặc đến giờ tự động, nhật ký sẽ ghi nhận tại đây.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = appState.notificationLogs.map(l => {
+      const isZaloGroup = l.status && l.status.includes('Nhóm Zalo');
+      const isEmail = l.status && l.status.includes('Email');
+      const isAuto = l.status && l.status.startsWith('Tự động');
+
+      let badgeClass = 'bg-slate-100 text-slate-800 border-slate-200';
+      let iconClass = 'fa-paper-plane text-slate-600';
+
+      if (isZaloGroup) {
+        badgeClass = 'bg-blue-100 text-blue-800 border-blue-200';
+        iconClass = 'fa-users text-blue-600';
+      } else if (isEmail) {
+        badgeClass = 'bg-purple-100 text-purple-800 border-purple-200';
+        iconClass = 'fa-envelope text-purple-600';
+      } else if (isAuto) {
+        badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+        iconClass = 'fa-bolt text-emerald-600';
+      }
+
+      return `
+        <tr class="hover:bg-slate-100/60 transition">
+          <td class="py-2 px-2 text-slate-600 font-mono text-[11px] whitespace-nowrap">${l.timestamp}</td>
+          <td class="py-2 px-2 whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeClass} font-sans flex items-center gap-1 w-fit">
+              <i class="fa-solid ${iconClass}"></i>${l.status}
+            </span>
+          </td>
+          <td class="py-2 px-2 font-bold text-slate-900 font-sans">${l.className}</td>
+          <td class="py-2 px-2 text-slate-700 font-sans">${l.monitorName} <span class="text-slate-400 text-[10px]">(${l.monitorEmail || l.monitorPhone || '—'})</span></td>
+          <td class="py-2 px-2 text-slate-600 max-w-xs truncate font-sans" title="${l.message.replace(/"/g, '&quot;')}">${l.message}</td>
+          <td class="py-2 px-2 text-center whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 font-sans border border-emerald-200">
+              <i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Đã phát
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
 
   // ================= ROOM SELECTION =================
   window.selectRoom = function (roomId) {
@@ -1553,6 +3129,11 @@
   // NẠP FILE BÁO GIẢNG & ĐĂNG KÝ THỰC HÀNH (MẪU BÁO GIẢNG.XLSX)
   // =========================================================================
   window.openBaoGiangModal = function () {
+    if (!appState.currentUser) {
+      alert('Vui lòng đăng nhập tài khoản Giáo viên hoặc Admin để nạp file báo giảng!');
+      openLoginModal();
+      return;
+    }
     const modal = document.getElementById('baoGiangModal');
     if (!modal) return;
 
@@ -1827,6 +3408,12 @@
   // ĐĂNG KÝ THỦ CÔNG (ĐẢM BẢO CHẶT CHẼ RANH GIỚI VÀ FIRST-COME FIRST-SERVED)
   // =========================================================================
   window.openBookingModal = function () {
+    if (!appState.currentUser) {
+      alert('Vui lòng đăng nhập tài khoản Giáo viên hoặc Admin để đăng ký sử dụng phòng máy!');
+      openLoginModal();
+      return;
+    }
+
     const modal = document.getElementById('bookingModal');
     if (!modal) return;
 
@@ -1868,6 +3455,11 @@
   };
 
   window.quickOpenBooking = function (session, day, period) {
+    if (!appState.currentUser) {
+      alert('Vui lòng đăng nhập tài khoản Giáo viên hoặc Admin để đăng ký tiết này!');
+      openLoginModal();
+      return;
+    }
     openBookingModal();
     document.getElementById('bookingSessionSelect').value = session;
     document.getElementById('bookingDaySelect').value = day;
@@ -1887,7 +3479,11 @@
 
     const classSelect = document.getElementById('bookingClassSelect');
     if (classSelect) {
-      classSelect.innerHTML = appState.classes.map(c => `<option value="${c}">${c}</option>`).join('');
+      classSelect.innerHTML = appState.classes.map(c => {
+        const cName = typeof c === 'string' ? c : c.name;
+        const mInfo = (typeof c === 'object' && c.monitorName) ? ` (LT: ${c.monitorName})` : '';
+        return `<option value="${cName}">${cName}${mInfo}</option>`;
+      }).join('');
     }
 
     const subjSelect = document.getElementById('bookingSubjectSelect');
@@ -1898,6 +3494,12 @@
 
   window.handleBookingSubmit = function (e) {
     e.preventDefault();
+
+    if (!appState.currentUser) {
+      alert('Vui lòng đăng nhập để đăng ký sử dụng phòng máy!');
+      openLoginModal();
+      return;
+    }
 
     const bookingId = document.getElementById('bookingIdInput').value;
     const roomName = document.getElementById('bookingRoomSelect').value;
@@ -2065,13 +3667,14 @@
         <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
           <div class="flex items-center gap-2">
             <!-- VIỆC KÝ KHI DẠY THÌ VẪN ĐƯỢC KỂ CẢ KHI SỔ ĐÃ KHÓA -->
-            ${(isMine || isAdmin) && !booking.signStart ? `
+            ${!u ? '<span class="text-slate-400 text-[11px] italic"><i class="fa-solid fa-eye mr-1"></i>Chế độ xem lịch (Khách)</span>' : ''}
+            ${u && (isMine || isAdmin) && !booking.signStart ? `
               <button onclick="closeDetailModal(); openSignModal('${booking.id}', 'start')" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs">
                 Ký nhận đầu giờ
               </button>
             ` : ''}
 
-            ${(isMine || isAdmin) && booking.signStart && !booking.signEnd ? `
+            ${u && (isMine || isAdmin) && booking.signStart && !booking.signEnd ? `
               <button onclick="closeDetailModal(); openSignModal('${booking.id}', 'end')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs">
                 Ký bàn giao cuối giờ
               </button>
@@ -2080,7 +3683,7 @@
 
           <div class="flex items-center gap-2">
             <!-- CHỈ ĐƯỢC XÓA CỦA MÌNH KHI CHƯA KHÓA, HOẶC ADMIN CÓ THỂ XÓA -->
-            ${((isMine && !locked) || isAdmin) ? `
+            ${u && ((isMine && !locked) || isAdmin) ? `
               <button onclick="deleteBooking('${booking.id}')" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-lg text-xs border border-red-200">
                 <i class="fa-solid fa-trash mr-1"></i> Hủy tiết này
               </button>
@@ -2103,6 +3706,12 @@
 
   // "Tài khoản giáo viên chỉ đăng kí của mình và xóa của mình trong thời gian admin chưa khóa đăng kí thôi."
   window.deleteBooking = function (bookingId) {
+    if (!appState.currentUser) {
+      alert('Vui lòng đăng nhập để thực hiện thao tác này!');
+      openLoginModal();
+      return;
+    }
+
     const booking = appState.bookings.find(b => b.id === bookingId);
     if (!booking) return;
 
@@ -2137,6 +3746,12 @@
     if (!booking) return;
 
     const u = appState.currentUser;
+    if (!u) {
+      alert('Vui lòng đăng nhập tài khoản giáo viên để ký nhận phòng!');
+      openLoginModal();
+      return;
+    }
+
     if (u.role !== 'admin' && u.email !== booking.teacherEmail) {
       alert('Bạn chỉ có thể ký trên tiết học do chính mình giảng dạy!');
       return;
@@ -2369,9 +3984,13 @@
     return html;
   }
 
-  // ================= AUTHENTICATION (BẢO MẬT GMAIL) =================
+  // ================= AUTHENTICATION (BẢO MẬT: CHỈ TÀI KHOẢN ADMIN CẤP MỚI VÀO ĐƯỢC) =================
   window.openLoginModal = function () {
     document.getElementById('userMenuDropdown')?.classList.add('hidden');
+    const alertBox = document.getElementById('loginErrorAlert');
+    if (alertBox) alertBox.classList.add('hidden');
+    const passInput = document.getElementById('loginPasswordInput');
+    if (passInput) passInput.value = '';
     document.getElementById('loginModal')?.classList.remove('hidden');
   };
 
@@ -2379,57 +3998,277 @@
     document.getElementById('loginModal')?.classList.add('hidden');
   };
 
-  window.handleCustomGmailLogin = function () {
-    const email = document.getElementById('customGmailInput').value.trim().toLowerCase();
-    const name = document.getElementById('customNameInput').value.trim();
+  window.togglePasswordVisibility = function (inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    if (!input) return;
+    if (input.type === 'password') {
+      input.type = 'text';
+      if (icon) icon.className = 'fa-solid fa-eye-slash';
+    } else {
+      input.type = 'password';
+      if (icon) icon.className = 'fa-solid fa-eye';
+    }
+  };
 
-    if (!email || !email.includes('@')) {
-      alert('Vui lòng nhập đúng định dạng Gmail!');
+  // ĐĂNG NHẬP NHANH 1-CHẠM (DÀNH CHO NGƯỜI DÙNG THỬ HOẶC QUẢN TRỊ VIÊN)
+  window.quickLoginAs = function (role) {
+    let target = appState.users.find(u => u.role === role);
+    if (!target) {
+      if (role === 'admin') {
+        target = {
+          email: 'admin@gmail.com',
+          password: 'admin',
+          name: 'Quản Trị Viên Phòng Máy',
+          phone: '0988888888',
+          role: 'admin',
+          department: 'Ban Quản Trị'
+        };
+        appState.users.unshift(target);
+      } else {
+        target = {
+          email: 'thanh.gv@gmail.com',
+          password: '123',
+          name: 'Thầy Phạm Đình Thanh',
+          phone: '0912345678',
+          role: 'teacher',
+          department: 'Tổ Tin học'
+        };
+        appState.users.push(target);
+      }
+      saveState();
+    }
+
+    appState.currentUser = target;
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(target));
+    closeLoginModal();
+    if (target.role === 'admin') {
+      switchView('admin');
+    } else {
+      switchView('today');
+    }
+    renderAll();
+    showToast(`Đã đăng nhập thành công: ${target.name} (${target.role === 'admin' ? 'Quản trị viên' : 'Giáo viên'})`);
+  };
+
+  window.handleCustomLogin = function (e) {
+    if (e && e.preventDefault) e.preventDefault();
+
+    const inputVal = (document.getElementById('loginEmailInput')?.value || '').trim();
+    const email = inputVal.toLowerCase();
+    const password = (document.getElementById('loginPasswordInput')?.value || '').trim();
+    const alertBox = document.getElementById('loginErrorAlert');
+    const alertMsg = document.getElementById('loginErrorMsg');
+
+    if (!email || !password) {
+      if (alertBox && alertMsg) {
+        alertMsg.textContent = 'Vui lòng nhập đầy đủ tài khoản và mật khẩu!';
+        alertBox.classList.remove('hidden');
+      }
       return;
     }
 
-    let u = appState.users.find(x => x.email === email);
-    if (u) {
-      if (name) u.name = name;
-    } else {
-      // Người dùng mới đăng nhập mặc định là Giáo viên!
-      // KHÔNG AI CÓ THỂ TỰ PHONG ADMIN CHO CHÍNH MÌNH KHI ĐĂNG NHẬP
-      u = {
-        email: email,
-        name: name || email.split('@')[0],
-        role: 'teacher',
-        department: 'Giáo viên bộ môn',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-        signature: name || email.split('@')[0]
+    // 1. TÌM TÀI KHOẢN TRONG HỆ THỐNG DO ADMIN ĐÃ KHAI BÁO (HỖ TRỢ GÕ "admin" HOẶC EMAIL ĐẦY ĐỦ)
+    let matchedUser = appState.users.find(x => {
+      const uEmail = (x.email || '').toLowerCase();
+      const uPrefix = uEmail.split('@')[0];
+      const uName = (x.name || '').toLowerCase();
+      return uEmail === email || uPrefix === email || uName === email || (email === 'admin' && x.role === 'admin');
+    });
+
+    // Nếu người dùng gõ "admin" mà danh sách chưa có, tự động tạo tài khoản quản trị chuẩn
+    if (!matchedUser && (email === 'admin' || email === 'admin@gmail.com')) {
+      matchedUser = {
+        email: 'admin@gmail.com',
+        password: 'admin',
+        name: 'Quản Trị Viên Phòng Máy',
+        phone: '0988888888',
+        role: 'admin',
+        department: 'Ban Quản Trị'
       };
-      appState.users.push(u);
+      appState.users.unshift(matchedUser);
+      saveState();
     }
 
-    appState.currentUser = u;
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(u));
+    if (!matchedUser) {
+      if (alertBox && alertMsg) {
+        alertMsg.textContent = `Tài khoản "${inputVal}" không tồn tại trong hệ thống! Vui lòng kiểm tra lại hoặc liên hệ Quản trị viên để được cấp tài khoản.`;
+        alertBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    // 2. KIỂM TRA MẬT KHẨU
+    const expectedPass = matchedUser.password || (matchedUser.role === 'admin' ? 'admin' : '123');
+    if (password !== expectedPass) {
+      if (alertBox && alertMsg) {
+        alertMsg.textContent = 'Mật khẩu không chính xác! Vui lòng kiểm tra lại.';
+        alertBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    // 3. ĐĂNG NHẬP THÀNH CÔNG
+    if (alertBox) alertBox.classList.add('hidden');
+    appState.currentUser = matchedUser;
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(matchedUser));
     saveState();
     closeLoginModal();
 
-    if (u.role !== 'admin' && appState.activeView === 'admin') {
+    if (matchedUser.role === 'admin') {
+      switchView('admin');
+    } else {
       switchView('today');
     }
 
     renderAll();
-    showToast(`Đăng nhập thành công với Gmail: ${email} (${u.role === 'admin' ? 'Admin' : 'Giáo viên'})`);
+    showToast(`Đăng nhập thành công: ${matchedUser.name} (${matchedUser.role === 'admin' ? 'Quản trị viên' : 'Giáo viên'})`);
   };
 
+  // Giữ alias tương thích
+  window.handleCustomGmailLogin = window.handleCustomLogin;
+
   window.logoutCurrentUser = function () {
-    // Đăng xuất -> chuyển về tài khoản giáo viên khách hoặc admin nếu cần
     localStorage.removeItem(CURRENT_USER_KEY);
-    // Gán tài khoản mặc định
-    appState.currentUser = appState.users[0] || {
-      email: 'admin@gmail.com',
-      name: 'Quản Trị Viên',
-      role: 'admin'
-    };
+    appState.currentUser = null; // Chuyển về chế độ Khách (Chưa đăng nhập)
     document.getElementById('userMenuDropdown')?.classList.add('hidden');
+    const adminTab = document.getElementById('tabBtn-admin');
+    if (adminTab) adminTab.className = 'hidden';
+    if (appState.activeView === 'admin') {
+      switchView('today');
+    }
     renderAll();
-    showToast('Đã đăng xuất tài khoản.');
+    showToast('Đã đăng xuất tài khoản. Bạn đang ở chế độ xem (Khách).');
+  };
+
+
+  // ================= ĐỔI MẬT KHẨU TÀI KHOẢN (GIÁO VIÊN / NGƯỜI DÙNG TỰ ĐỔI - BẢO MẬT ADMIN KHÔNG XEM ĐƯỢC) =================
+  window.openChangePasswordModal = function () {
+    document.getElementById('userMenuDropdown')?.classList.add('hidden');
+    if (!appState.currentUser) {
+      alert('Vui lòng đăng nhập tài khoản trước khi đổi mật khẩu!');
+      return;
+    }
+    const errAlert = document.getElementById('changePassErrorAlert');
+    if (errAlert) errAlert.classList.add('hidden');
+    const oldInput = document.getElementById('oldPasswordInput');
+    const newInput = document.getElementById('newPasswordInput');
+    const confirmInput = document.getElementById('confirmNewPasswordInput');
+    if (oldInput) oldInput.value = '';
+    if (newInput) newInput.value = '';
+    if (confirmInput) confirmInput.value = '';
+    document.getElementById('changePasswordModal')?.classList.remove('hidden');
+  };
+
+  window.closeChangePasswordModal = function () {
+    document.getElementById('changePasswordModal')?.classList.add('hidden');
+  };
+
+  window.handleChangePasswordSubmit = function (e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!appState.currentUser) return;
+
+    const oldPass = (document.getElementById('oldPasswordInput')?.value || '').trim();
+    const newPass = (document.getElementById('newPasswordInput')?.value || '').trim();
+    const confirmPass = (document.getElementById('confirmNewPasswordInput')?.value || '').trim();
+    const alertBox = document.getElementById('changePassErrorAlert');
+    const alertMsg = document.getElementById('changePassErrorMsg');
+
+    const expectedCurrentPass = appState.currentUser.password || (appState.currentUser.role === 'admin' ? 'admin' : '123');
+
+    if (oldPass !== expectedCurrentPass) {
+      if (alertBox && alertMsg) {
+        alertMsg.textContent = 'Mật khẩu hiện tại không chính xác!';
+        alertBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (newPass.length < 3) {
+      if (alertBox && alertMsg) {
+        alertMsg.textContent = 'Mật khẩu mới phải có ít nhất 3 ký tự!';
+        alertBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (newPass !== confirmPass) {
+      if (alertBox && alertMsg) {
+        alertMsg.textContent = 'Xác nhận mật khẩu mới không trùng khớp!';
+        alertBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    // Cập nhật mật khẩu cá nhân
+    const userEmail = appState.currentUser.email;
+    const idx = appState.users.findIndex(u => u.email === userEmail);
+    if (idx >= 0) {
+      appState.users[idx].password = newPass;
+      appState.users[idx].isCustomPassword = true; // Đánh dấu giáo viên đã tự đổi mật khẩu riêng tư
+      appState.currentUser = appState.users[idx];
+    } else {
+      appState.currentUser.password = newPass;
+      appState.currentUser.isCustomPassword = true;
+    }
+
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(appState.currentUser));
+    saveState();
+    closeChangePasswordModal();
+    renderAll();
+    showToast('Đã đổi mật khẩu thành công! Mật khẩu mới được bảo mật riêng tư.');
+  };
+
+  // ================= ADMIN CẤP LẠI MẬT KHẨU TẠM THỜI (KHI GIÁO VIÊN QUÊN MẬT KHẨU) =================
+  window.openAdminResetPassModal = function (email) {
+    if (appState.currentUser?.role !== 'admin') return;
+    const target = appState.users.find(u => u.email === email);
+    if (!target) return;
+
+    document.getElementById('adminResetPassEmail').value = target.email;
+    const nameEl = document.getElementById('adminResetPassTargetName');
+    if (nameEl) nameEl.textContent = `Cho: ${target.name}`;
+    const emailDisp = document.getElementById('adminResetPassEmailDisplay');
+    if (emailDisp) emailDisp.innerHTML = `<i class="fa-solid fa-user text-purple-600 mr-1"></i>${target.name} &bull; <span class="font-mono text-slate-500">${target.email}</span>`;
+
+    const randomPass = 'gv' + Math.floor(1000 + Math.random() * 9000);
+    const passInput = document.getElementById('adminResetPassInput');
+    if (passInput) passInput.value = randomPass;
+
+    document.getElementById('adminResetPassModal')?.classList.remove('hidden');
+  };
+
+  window.closeAdminResetPassModal = function () {
+    document.getElementById('adminResetPassModal')?.classList.add('hidden');
+  };
+
+  window.generateRandomResetPassword = function () {
+    const pass = 'gv' + Math.floor(1000 + Math.random() * 9000);
+    const input = document.getElementById('adminResetPassInput');
+    if (input) input.value = pass;
+  };
+
+  window.handleAdminResetPassSubmit = function (e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (appState.currentUser?.role !== 'admin') return;
+
+    const email = document.getElementById('adminResetPassEmail')?.value;
+    const newPass = (document.getElementById('adminResetPassInput')?.value || '').trim();
+    if (!email || !newPass) return;
+
+    const idx = appState.users.findIndex(u => u.email === email);
+    if (idx >= 0) {
+      appState.users[idx].password = newPass;
+      appState.users[idx].isCustomPassword = false; // Đặt lại về do admin cấp
+      if (appState.currentUser?.email === email) {
+        appState.currentUser = appState.users[idx];
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(appState.currentUser));
+      }
+      saveState();
+      closeAdminResetPassModal();
+      renderAll();
+      showToast(`Đã cấp lại mật khẩu tạm thời cho ${appState.users[idx].name}: ${newPass}`);
+    }
   };
 
   // ================= TOAST =================
@@ -2479,6 +4318,8 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         closeRoomModal();
+        closeClassModal();
+        closeImportClassesModal();
         closeUserModal();
         closeImportUsersModal();
         closeBookingModal();

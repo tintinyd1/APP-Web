@@ -87,8 +87,20 @@
 
       <!-- Right: User Auth & Role Bar -->
       <div class="flex items-center gap-3">
-        <!-- User Pill Dropdown Trigger -->
-        <div class="relative">
+        <!-- GUEST BAR (Chưa đăng nhập) -->
+        <div id="userAuthGuestContainer" class="flex items-center gap-2">
+          <span class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+            <i class="fa-solid fa-eye text-slate-400"></i>
+            <span>Chế độ xem (Khách)</span>
+          </span>
+          <button onclick="openLoginModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-brand-500/20 transition">
+            <i class="fa-solid fa-right-to-bracket"></i>
+            <span>Đăng nhập</span>
+          </button>
+        </div>
+
+        <!-- LOGGED IN USER BAR (Đã đăng nhập) -->
+        <div id="userAuthLoggedInContainer" class="hidden relative">
           <button id="userMenuBtn" class="flex items-center gap-2.5 p-1.5 pr-3 rounded-full hover:bg-slate-100/80 border border-slate-200 transition-all text-left">
             <img id="userAvatarImg" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80" alt="Avatar" class="w-8 h-8 rounded-full object-cover ring-2 ring-brand-500/20">
             <div class="hidden md:block">
@@ -104,7 +116,7 @@
           <!-- User Menu Dropdown -->
           <div id="userMenuDropdown" class="hidden absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-dropdown">
             <div class="px-4 py-3 border-b border-slate-100">
-              <p class="text-xs text-slate-400 font-medium">Tài khoản Google đang kết nối</p>
+              <p class="text-xs text-slate-400 font-medium">Tài khoản đang đăng nhập</p>
               <p id="menuUserFullName" class="text-sm font-bold text-slate-800 mt-0.5">Quản Trị Viên Phòng Máy</p>
               <p id="menuUserEmail" class="text-xs text-slate-500 font-mono mt-0.5">admin@gmail.com</p>
               <div class="mt-2 flex items-center gap-2">
@@ -114,11 +126,15 @@
               </div>
             </div>
 
-            <!-- Login custom Gmail / Logout -->
+            <!-- Login other Gmail / Logout -->
             <div class="pt-1">
+              <button onclick="openChangePasswordModal()" class="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition">
+                <i class="fa-solid fa-key text-amber-500"></i>
+                <span class="font-medium">Đổi mật khẩu tài khoản</span>
+              </button>
               <button onclick="openLoginModal()" class="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition">
-                <i class="fa-brands fa-google text-red-500"></i>
-                <span>Đổi / Đăng nhập tài khoản Gmail...</span>
+                <i class="fa-solid fa-user-plus text-brand-600"></i>
+                <span>Đổi / Đăng nhập tài khoản khác...</span>
               </button>
               <button onclick="logoutCurrentUser()" class="w-full px-4 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition">
                 <i class="fa-solid fa-arrow-right-from-bracket"></i>
@@ -158,7 +174,7 @@
         </button>
 
         <!-- Tab 4: Quản Trị Hệ Thống (Admin Panel) -->
-        <button onclick="switchView('admin')" id="tabBtn-admin" class="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-purple-700 bg-purple-50/80 hover:bg-purple-100 border border-purple-200/80 ml-auto">
+        <button onclick="switchView('admin')" id="tabBtn-admin" class="hidden px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-purple-700 bg-purple-50/80 hover:bg-purple-100 border border-purple-200/80 ml-auto">
           <i class="fa-solid fa-gear"></i>
           <span>Quản Trị (Khai Báo Phòng, Lớp, Gmail, Đặt Tên Tuần)</span>
         </button>
@@ -505,18 +521,24 @@
       </div>
 
       <!-- Admin Sub Tabs -->
-      <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
-        <button onclick="switchAdminTab('rooms')" id="adminTabBtn-rooms" class="px-4 py-2 rounded-xl text-xs font-bold bg-white text-purple-700 shadow-sm border border-slate-200 flex items-center gap-2">
-          <i class="fa-solid fa-chalkboard"></i> Khai báo Phòng thực hành
+      <div class="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+        <button onclick="switchAdminTab('rooms')" id="adminTabBtn-rooms" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-purple-700 shadow-sm border border-slate-200 flex items-center gap-2 whitespace-nowrap">
+          <i class="fa-solid fa-chalkboard"></i> Khai báo Phòng
         </button>
-        <button onclick="switchAdminTab('classes')" id="adminTabBtn-classes" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2">
-          <i class="fa-solid fa-graduation-cap"></i> Khai báo Lớp thực hành
+        <button onclick="switchAdminTab('classes')" id="adminTabBtn-classes" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 whitespace-nowrap">
+          <i class="fa-solid fa-graduation-cap"></i> Khai báo Lớp & Lớp trưởng
         </button>
-        <button onclick="switchAdminTab('users')" id="adminTabBtn-users" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2">
-          <i class="fa-solid fa-users"></i> Tài khoản Gmail & Phân quyền
+        <button onclick="switchAdminTab('users')" id="adminTabBtn-users" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 whitespace-nowrap">
+          <i class="fa-solid fa-users"></i> Tài khoản & Mật khẩu
         </button>
-        <button onclick="switchAdminTab('weeks')" id="adminTabBtn-weeks" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2">
+        <button onclick="switchAdminTab('weeks')" id="adminTabBtn-weeks" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 whitespace-nowrap">
           <i class="fa-solid fa-calendar-check"></i> Đặt tên tuần & Năm học
+        </button>
+        <button onclick="switchAdminTab('periods')" id="adminTabBtn-periods" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 whitespace-nowrap">
+          <i class="fa-regular fa-clock"></i> Chỉnh Giờ Tiết Học
+        </button>
+        <button onclick="switchAdminTab('notifications')" id="adminTabBtn-notifications" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 whitespace-nowrap">
+          <i class="fa-solid fa-paper-plane text-emerald-600"></i> Thời Gian Giao Cho Lớp
         </button>
       </div>
 
@@ -551,30 +573,48 @@
         </div>
       </div>
 
-      <!-- SUB-TAB 2: KHAI BÁO LỚP THỰC HÀNH -->
+      <!-- SUB-TAB 2: KHAI BÁO LỚP THỰC HÀNH & LỚP TRƯỞNG (HỖ TRỢ EXCEL) -->
       <div id="adminPanel-classes" class="hidden space-y-4">
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-          <h3 class="text-sm font-bold text-slate-800 mb-1">Khai Báo Danh Sách Lớp Thực Hành</h3>
-          <p class="text-xs text-slate-500 mb-4">Các lớp này sẽ xuất hiện trong dropdown đăng ký tiết học và trang tra cứu của học sinh</p>
-
-          <!-- Add Class Form -->
-          <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 mb-5 flex flex-col sm:flex-row items-end gap-3">
-            <div class="flex-grow w-full">
-              <label class="block text-slate-700 font-bold mb-1 text-xs">Thêm lớp đơn lẻ hoặc thêm hàng loạt (cách nhau dấu phẩy hoặc xuống dòng):</label>
-              <input type="text" id="newClassInput" placeholder="Ví dụ: 10A1, 10A2, 11B1, 12A3..." class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-800">Khai Báo Lớp Thực Hành & Thông Tin Lớp Trưởng</h3>
+              <p class="text-xs text-slate-500">Mỗi lớp khai báo gồm Tên lớp, Họ tên Lớp trưởng, Số điện thoại và Email để tự động gửi thông báo lịch thực hành lúc 21h</p>
             </div>
-            <button onclick="handleBatchAddClasses()" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs whitespace-nowrap shadow-sm">
-              <i class="fa-solid fa-plus mr-1"></i> Thêm vào danh sách
-            </button>
+            
+            <div class="flex items-center gap-2 flex-wrap">
+              <button onclick="openAddClassModal()" class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i> Khai báo lớp mới
+              </button>
+              <button onclick="openImportClassesModal()" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-file-excel"></i> Nạp từ Excel
+              </button>
+              <button onclick="downloadSampleClassExcelTemplate()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs shadow-xs flex items-center gap-1.5" title="Tải mẫu Excel nạp danh sách lớp">
+                <i class="fa-solid fa-file-arrow-down text-emerald-600"></i> Tải mẫu Excel
+              </button>
+              <button onclick="exportClassesToExcel()" class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs shadow-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-download"></i> Xuất Excel
+              </button>
+              <button onclick="clearAllClasses()" class="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs border border-red-200">
+                <i class="fa-solid fa-trash"></i> Xóa hết
+              </button>
+            </div>
           </div>
 
-          <!-- Classes Pills Grid -->
-          <div class="border border-slate-200 rounded-xl p-4 bg-white">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-bold text-slate-700">Các lớp hiện có (<span id="classesCountTxt">0</span> lớp):</span>
-              <button onclick="clearAllClasses()" class="text-xs text-red-600 hover:underline">Xóa tất cả lớp</button>
-            </div>
-            <div id="adminClassesPillsContainer" class="flex flex-wrap gap-2"></div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold uppercase">
+                  <th class="py-2.5 px-3 w-12 text-center">STT</th>
+                  <th class="py-2.5 px-3">Tên lớp</th>
+                  <th class="py-2.5 px-3">Họ và tên Lớp trưởng</th>
+                  <th class="py-2.5 px-3">Số điện thoại liên hệ</th>
+                  <th class="py-2.5 px-3">Email nhận thông báo</th>
+                  <th class="py-2.5 px-3 text-center">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="adminClassesTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -606,7 +646,8 @@
               <thead>
                 <tr class="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold uppercase">
                   <th class="py-2.5 px-3">Họ và tên</th>
-                  <th class="py-2.5 px-3">Tài khoản Gmail</th>
+                  <th class="py-2.5 px-3">Tài khoản / Gmail</th>
+                  <th class="py-2.5 px-3">Mật khẩu</th>
                   <th class="py-2.5 px-3">Số điện thoại</th>
                   <th class="py-2.5 px-3">Tổ bộ môn</th>
                   <th class="py-2.5 px-3 text-center">Phân quyền</th>
@@ -675,8 +716,290 @@
 
       </div>
 
-    </div>
+      <!-- SUB-TAB 5: CẤU HÌNH GIỜ CÁC TIẾT HỌC (ADMIN TỰ CHỈNH) -->
+      <div id="adminPanel-periods" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-regular fa-clock text-indigo-600"></i> Cấu Hình Giờ Bắt Đầu & Kết Thúc Các Tiết Học
+              </h3>
+              <p class="text-xs text-slate-500">Quản trị viên có thể tùy ý điều chỉnh thời gian của từng tiết học cho phù hợp với hiệu lệnh trống của nhà trường</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="resetPeriodTimesDefault()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition">
+                <i class="fa-solid fa-rotate-left mr-1"></i> Khôi phục mặc định
+              </button>
+              <button onclick="savePeriodTimesConfig()" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition flex items-center gap-1.5">
+                <i class="fa-solid fa-floppy-disk"></i> Lưu cấu hình giờ tiết
+              </button>
+            </div>
+          </div>
 
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
+            <!-- Buổi Sáng -->
+            <div class="p-4 bg-amber-50/50 rounded-2xl border border-amber-200 space-y-3">
+              <div class="flex items-center gap-2 font-black text-amber-900 border-b border-amber-200/80 pb-2">
+                <i class="fa-solid fa-sun text-amber-600"></i> Khung Giờ Buổi Sáng (Tiết 1 - Tiết 5)
+              </div>
+              <div class="space-y-2.5" id="periodsConfigContainerSang">
+                <!-- Injected via JS -->
+              </div>
+            </div>
+
+            <!-- Buổi Chiều -->
+            <div class="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200 space-y-3">
+              <div class="flex items-center gap-2 font-black text-indigo-900 border-b border-indigo-200/80 pb-2">
+                <i class="fa-solid fa-cloud-sun text-indigo-600"></i> Khung Giờ Buổi Chiều (Tiết 1 - Tiết 5)
+              </div>
+              <div class="space-y-2.5" id="periodsConfigContainerChieu">
+                <!-- Injected via JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-TAB 6: THỜI GIAN GIAO CHO LỚP (TỰ ĐỘNG & ADMIN GIAO NGAY) -->
+      <div id="adminPanel-notifications" class="hidden space-y-5">
+        
+        <!-- TOP BANNER -->
+        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-md border border-slate-800">
+          <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2.5">
+                <span class="w-9 h-9 rounded-xl bg-brand-500/20 text-brand-400 border border-brand-500/30 flex items-center justify-center text-base">
+                  <i class="fa-solid fa-bell"></i>
+                </span>
+                <div>
+                  <h3 class="text-base font-bold text-white">Quản Lý Giao Lịch Thực Hành Cho Lớp (Nhóm Zalo & Email)</h3>
+                  <p class="text-xs text-slate-300">Tự động tổng hợp và gửi lịch thực hành qua <strong class="text-blue-300">Nhóm Zalo Lớp Trưởng</strong> và <strong class="text-purple-300">Email</strong> (Không dùng tin nhắn SMS viễn thông)</p>
+                </div>
+              </div>
+            </div>
+            
+            <div id="notifStatusBadge" class="flex items-center gap-2">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 CỘT CHÍNH: CÀI ĐẶT LỊCH GIAO vs KHU VỰC GIAO LỊCH (ZALO & EMAIL) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          
+          <!-- CỘT 1: CÀI ĐẶT LỊCH TỰ ĐỘNG -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                  <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
+                    <i class="fa-solid fa-clock"></i>
+                  </span>
+                  <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">1. Cài Đặt Lịch Tự Động</h4>
+                </div>
+                <span class="text-[10px] text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full font-bold border border-purple-200">
+                  <i class="fa-solid fa-bolt mr-1"></i>Hàng ngày
+                </span>
+              </div>
+
+              <div class="mt-4 space-y-3.5 text-xs text-slate-700">
+                <!-- Toggle Bật/Tắt -->
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label for="notifAutoSendEnabled" class="font-bold text-slate-800 cursor-pointer block">Kích hoạt tự động thông báo</label>
+                    <span class="text-[11px] text-slate-500">Hệ thống quét lịch và tự động tổng hợp thông báo khi đến giờ hẹn</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="notifAutoSendEnabled" class="sr-only peer" checked onchange="updateNotifAutoStatusText()">
+                    <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                <!-- Giờ gửi tự động -->
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">
+                    <i class="fa-regular fa-clock text-slate-400 mr-1"></i> Giờ thông báo tự động hàng ngày:
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <input type="time" id="notifAutoSendTime" value="21:00" class="flex-1 px-3 py-2 border border-slate-300 rounded-xl font-mono text-sm font-bold text-slate-800 focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                    <button type="button" onclick="setQuickNotifTime('21:00')" class="px-2.5 py-2 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">21:00</button>
+                    <button type="button" onclick="setQuickNotifTime('20:00')" class="px-2.5 py-2 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">20:00</button>
+                    <button type="button" onclick="setQuickNotifTime('06:30')" class="px-2.5 py-2 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">06:30</button>
+                  </div>
+                  <p class="text-[11px] text-slate-500 mt-1">Giờ chuẩn quy định: <strong>21:00 tối hôm trước</strong> (Admin có thể linh hoạt đổi sang bất kỳ giờ nào).</p>
+                </div>
+
+                <!-- Mục tiêu lịch gửi -->
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">
+                    <i class="fa-solid fa-bullseye text-slate-400 mr-1"></i> Lịch áp dụng khi tự động thông báo:
+                  </label>
+                  <select id="notifAutoSendTarget" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-brand-500">
+                    <option value="tomorrow">Tối hôm trước: Lịch các lớp thực hành Ngày mai (Chuẩn quy định)</option>
+                    <option value="today">Sáng sớm trong ngày: Lịch các lớp thực hành Hôm nay</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Nút Lưu Cài Đặt -->
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span id="notifAutoSaveHint" class="text-[11px] text-slate-400 italic">Đã đồng bộ với hệ thống</span>
+              <button onclick="saveNotificationSettings()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5">
+                <i class="fa-solid fa-floppy-disk"></i> Lưu Cài Đặt Lịch Giao
+              </button>
+            </div>
+          </div>
+
+          <!-- CỘT 2: KHU VỰC GIAO LỊCH (NHÓM ZALO & EMAIL LỚP TRƯỞNG) -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                  <span class="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">
+                    <i class="fa-solid fa-paper-plane"></i>
+                  </span>
+                  <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">2. Giao Lịch Qua Nhóm Zalo & Email (Phát Ngay)</h4>
+                </div>
+                <span class="text-[10px] text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full font-bold border border-blue-200">
+                  Phương Án 2
+                </span>
+              </div>
+
+              <div class="mt-4 space-y-3.5 text-xs text-slate-700">
+                <p class="text-slate-600 leading-relaxed">
+                  Gom toàn bộ lịch thực hành thành 1 bản tin để <strong>gửi trực tiếp vào Nhóm Zalo Lớp Trưởng</strong> hoặc <strong>gửi Email đồng loạt</strong> đến các lớp trưởng chỉ với 1 click.
+                </p>
+
+                <!-- Chọn ngày cần giao -->
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">
+                    <i class="fa-solid fa-calendar-check text-slate-400 mr-1"></i> Chọn ngày cần giao thông báo:
+                  </label>
+                  <select id="notifDispatchTargetSelect" onchange="onDispatchTargetChange()" class="w-full px-3 py-2.5 border border-blue-300 rounded-xl text-xs font-bold text-blue-900 bg-blue-50/50 focus:ring-2 focus:ring-blue-500">
+                    <option value="tomorrow">Lịch Ngày Mai (Khuyên dùng)</option>
+                    <option value="today">Lịch Ngày Hôm Nay</option>
+                  </select>
+                </div>
+
+                <!-- Thống kê số lớp sẵn sàng -->
+                <div class="p-3 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-xs flex items-center justify-between">
+                  <span class="text-slate-600">Trạng thái lớp thực hành:</span>
+                  <span id="notifDispatchReadyCount" class="font-bold text-blue-800">Đang quét...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Các nút hành động chính: Nhóm Zalo & Email -->
+            <div class="pt-3 border-t border-slate-100 space-y-2">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <!-- NÚT 1: GỬI VÀO NHÓM ZALO -->
+                <button onclick="sendScheduleToZaloGroup()" type="button" class="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-users text-sm"></i> GỬI VÀO NHÓM ZALO
+                </button>
+
+                <!-- NÚT 2: GỬI EMAIL ĐỒNG LOẠT -->
+                <button onclick="sendBulkEmailToMonitors()" type="button" class="w-full px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-envelope text-sm"></i> GỬI EMAIL LỚP TRƯỞNG
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between gap-2 pt-1 text-xs">
+                <button onclick="copyZaloGroupMessage()" type="button" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition flex items-center gap-1.5">
+                  <i class="fa-regular fa-copy text-slate-500"></i> Sao chép bản tin Zalo
+                </button>
+                <button onclick="dispatchNotificationsNow()" type="button" class="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-xl border border-emerald-200 transition flex items-center gap-1.5">
+                  <i class="fa-solid fa-list-check"></i> Xem danh sách & Nhật ký
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- BANNER HƯỚNG DẪN PHƯƠNG ÁN 2 (NHÓM ZALO & EMAIL) -->
+        <div class="p-4 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 rounded-2xl text-xs text-slate-700">
+          <div class="flex items-center gap-2 font-bold text-blue-900 mb-2">
+            <i class="fa-solid fa-circle-info text-blue-600 text-sm"></i> Hướng dẫn giao lịch thực hành (Phương án 2):
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+            <div class="p-3 bg-white rounded-xl border border-blue-200/70 shadow-2xs space-y-1">
+              <p class="font-bold text-blue-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-users text-blue-600"></i> Kênh 1: Nhóm Zalo Lớp Trưởng
+              </p>
+              <p class="text-[11px] text-slate-600 leading-relaxed">
+                Bấm nút <strong>"GỬI VÀO NHÓM ZALO"</strong>: Hệ thống tự động sao chép toàn bộ bản tin lịch của các lớp ngày mai và mở Zalo Web. Bạn chỉ việc chọn Nhóm Zalo Lớp Trưởng rồi ấn <strong>Ctrl+V</strong> và <strong>Enter</strong> là tất cả lớp trưởng đều nhận được ngay!
+              </p>
+            </div>
+            <div class="p-3 bg-white rounded-xl border border-purple-200/70 shadow-2xs space-y-1">
+              <p class="font-bold text-purple-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-envelope text-purple-600"></i> Kênh 2: Gửi Email Cho Lớp Trưởng
+              </p>
+              <p class="text-[11px] text-slate-600 leading-relaxed">
+                Bấm nút <strong>"GỬI EMAIL LỚP TRƯỞNG"</strong>: Hệ thống gom toàn bộ Email của các lớp trưởng vào danh sách và mở sẵn trình soạn thư kèm nội dung chuẩn quy định. Bạn chỉ cần bấm <strong>Gửi</strong> 1 lần là xong.
+              </p>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-2.5">
+            • <em>Lưu ý:</em> Hệ thống <strong>không sử dụng tin nhắn văn bản (SMS)</strong> để tránh phát sinh cước viễn thông cho nhà trường và học sinh.
+          </p>
+        </div>
+
+        <!-- CÚ PHÁP THÔNG BÁO CHUẨN QUY ĐỊNH -->
+        <div class="p-4 bg-white border border-slate-200 rounded-2xl text-xs text-slate-700">
+          <div class="flex items-center gap-2 font-bold text-slate-800 mb-1.5">
+            <i class="fa-solid fa-bullhorn text-brand-600"></i> Cú pháp thông báo chuẩn quy định cho từng lớp:
+          </div>
+          <div id="notifSyntaxPreviewBox" class="p-3 bg-slate-50 rounded-xl border border-slate-200 font-mono text-xs text-slate-900 font-semibold shadow-2xs">
+            "Ngày mai lớp thực hành Tiết <span class="text-brand-600 font-bold">[Tiết]</span> tại phòng <span class="text-purple-600 font-bold">[Tên phòng]</span> vị trí <span class="text-emerald-600 font-bold">[Vị trí/Khu nhà]</span>."
+          </div>
+        </div>
+
+        <!-- XEM TRƯỚC DANH SÁCH LỚP SẼ NHẬN THÔNG BÁO -->
+        <div class="border border-slate-200 rounded-2xl p-4 bg-white">
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h4 class="text-xs font-bold text-slate-800 flex items-center gap-2" id="notifScheduleTitle">
+              <i class="fa-solid fa-calendar-day text-brand-600"></i> Danh Sách Lớp & Nội Dung Thông Báo:
+            </h4>
+            <span id="notifScheduleCountBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700 border border-brand-200">
+              0 lớp
+            </span>
+          </div>
+
+          <div id="notifCardsContainer" class="space-y-3">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- NHẬT KÝ ĐÃ PHÁT THÔNG BÁO -->
+        <div class="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
+          <div class="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+            <h4 class="text-xs font-bold text-slate-700 flex items-center gap-2">
+              <i class="fa-solid fa-clock-rotate-left text-slate-500"></i> Nhật Ký Đã Phát Thông Báo (Nhóm Zalo & Email):
+            </h4>
+            <button onclick="clearNotificationLogs()" class="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1">
+              <i class="fa-regular fa-trash-can"></i> Xóa nhật ký
+            </button>
+          </div>
+          <div class="overflow-x-auto max-h-56">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="text-slate-500 border-b border-slate-200 font-semibold">
+                  <th class="py-1.5 px-2">Thời gian phát</th>
+                  <th class="py-1.5 px-2">Kênh gửi</th>
+                  <th class="py-1.5 px-2">Đối tượng</th>
+                  <th class="py-1.5 px-2">Thông tin người nhận</th>
+                  <th class="py-1.5 px-2">Nội dung</th>
+                  <th class="py-1.5 px-2 text-center">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody id="notifLogsTableBody" class="divide-y divide-slate-200/60 font-mono text-[11px]"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
   </main>
 
   <!-- ================= FOOTER ================= -->
@@ -732,6 +1055,72 @@
     </div>
   </div>
 
+  <!-- ================= MODAL: KHAI BÁO & SỬA LỚP THỰC HÀNH ================= -->
+  <div id="classModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-dropdown">
+      <div class="bg-indigo-900 px-6 py-4 text-white flex items-center justify-between">
+        <h3 class="text-sm font-bold" id="classModalTitle">Khai Báo Lớp Thực Hành</h3>
+        <button onclick="closeClassModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form id="classForm" onsubmit="handleClassSubmit(event)" class="p-6 space-y-3.5 text-xs">
+        <input type="hidden" id="classEditNameOriginal">
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Tên lớp học <span class="text-red-500">*</span></label>
+          <input type="text" id="classNameInput" required placeholder="Ví dụ: 10A1, 11B2..." class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-brand-700">
+        </div>
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Họ và tên Lớp trưởng <span class="text-red-500">*</span></label>
+          <input type="text" id="classMonitorNameInput" required placeholder="Ví dụ: Nguyễn Văn An" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold">
+        </div>
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Số điện thoại Lớp trưởng <span class="text-red-500">*</span></label>
+          <input type="text" id="classMonitorPhoneInput" required placeholder="Ví dụ: 0912345601" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono">
+          <p class="text-[10px] text-slate-400 mt-1">Dùng để liên hệ và gửi thông báo lịch thực hành qua Zalo</p>
+        </div>
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Email nhận thông báo của Lớp trưởng</label>
+          <input type="email" id="classMonitorEmailInput" placeholder="Ví dụ: lop10a1@gmail.com" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono">
+        </div>
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeClassModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Hủy</button>
+          <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">Lưu lớp học</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: NẠP LỚP & LỚP TRƯỞNG TỪ EXCEL ================= -->
+  <div id="importClassesModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden animate-dropdown">
+      <div class="bg-emerald-700 px-6 py-4 text-white flex items-center justify-between">
+        <h3 class="text-sm font-bold flex items-center gap-2">
+          <i class="fa-solid fa-file-excel"></i> Nạp Danh Sách Lớp & Lớp Trưởng Từ File Excel
+        </h3>
+        <button onclick="closeImportClassesModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-4 text-xs">
+        <p class="text-slate-600">
+          Tải file mẫu Excel bên dưới, điền tên lớp cùng số điện thoại và email của từng lớp trưởng rồi tải lên hệ thống:
+        </p>
+        <div class="flex items-center gap-3">
+          <button onclick="downloadSampleClassExcelTemplate()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-file-arrow-down text-emerald-600"></i> Tải file Excel mẫu
+          </button>
+        </div>
+        <div class="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-emerald-500 hover:bg-emerald-50/20 transition cursor-pointer" onclick="document.getElementById('excelClassesFileInput').click()">
+          <i class="fa-solid fa-cloud-arrow-up text-3xl text-emerald-600 mb-2"></i>
+          <p class="font-bold text-slate-800 text-sm">Nhấp vào đây để chọn file Excel (.xlsx, .xls)</p>
+          <p class="text-slate-400 mt-1">Cột 1: Tên lớp | Cột 2: Lớp trưởng | Cột 3: SĐT | Cột 4: Email</p>
+          <input type="file" id="excelClassesFileInput" accept=".xlsx, .xls" class="hidden" onchange="handleExcelClassesUpload(event)">
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= MODAL: KHAI BÁO NGƯỜI DÙNG GMAIL ================= -->
   <div id="userModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-dropdown">
@@ -748,8 +1137,18 @@
           <input type="text" id="userNameInput" required placeholder="Ví dụ: Thầy Nguyễn Văn Nam" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold">
         </div>
         <div>
-          <label class="block text-slate-700 font-bold mb-1">Tài khoản Gmail <span class="text-red-500">*</span></label>
+          <label class="block text-slate-700 font-bold mb-1">Tài khoản Gmail / Tên đăng nhập <span class="text-red-500">*</span></label>
           <input type="email" id="userEmailInput" required placeholder="tengiaovien@gmail.com" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono">
+        </div>
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Mật khẩu cấp cho tài khoản <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <input type="text" id="userPasswordInput" required placeholder="Nhập mật khẩu (ví dụ: 123456)..." class="w-full px-3 py-2 pr-16 bg-slate-50 border border-slate-300 rounded-xl font-mono">
+            <button type="button" onclick="generateRandomPassword()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-purple-600 hover:text-purple-800 text-[11px] font-bold" title="Tự động tạo mật khẩu">
+              <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tạo
+            </button>
+          </div>
+          <p id="userPassHint" class="text-[10px] text-slate-400 mt-1">Admin cấp mật khẩu này cho giáo viên để đăng nhập hệ thống</p>
         </div>
         <div>
           <label class="block text-slate-700 font-bold mb-1">Số điện thoại liên hệ</label>
@@ -972,30 +1371,178 @@
     </div>
   </div>
 
-  <!-- ================= MODAL: ĐĂNG NHẬP GMAIL ================= -->
-  <div id="loginModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+  <!-- ================= MODAL: ĐĂNG NHẬP HỆ THỐNG PHÒNG MÁY ================= -->
+  <div id="loginModal" onclick="if(event.target === this) closeLoginModal()" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-dropdown">
-      <div class="p-6 text-center border-b border-slate-100">
-        <div class="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 mx-auto flex items-center justify-center text-xl mb-2">
-          <i class="fa-brands fa-google text-red-500"></i>
+      <div class="p-6 text-center border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white mx-auto flex items-center justify-center text-xl mb-2 shadow-md shadow-brand-500/25">
+          <i class="fa-solid fa-lock"></i>
         </div>
-        <h3 class="text-base font-black text-slate-900">Đăng Nhập Tài Khoản Gmail</h3>
-        <p class="text-xs text-slate-500 mt-0.5">Sử dụng Google Account để quản lý hoặc đăng ký phòng</p>
+        <h3 class="text-base font-black text-slate-900">Đăng Nhập Quản Lý Phòng Máy</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Dành cho Giáo viên & Quản trị viên được Admin cấp tài khoản</p>
       </div>
-      <div class="p-6 space-y-3.5 text-xs">
+      <form id="loginForm" onsubmit="handleCustomLogin(event)" class="p-6 space-y-4 text-xs">
         <div>
-          <label class="block text-slate-700 font-bold mb-1">Địa chỉ Gmail của bạn:</label>
-          <input type="email" id="customGmailInput" placeholder="tenban@gmail.com" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono">
+          <label class="block text-slate-700 font-bold mb-1.5">Tài khoản Gmail / Tên đăng nhập <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i class="fa-solid fa-envelope"></i>
+            </span>
+            <input type="text" id="loginEmailInput" required placeholder="Nhập tài khoản Gmail hoặc tên đăng nhập..." class="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-brand-500/20 focus:bg-white focus:outline-none">
+          </div>
         </div>
         <div>
-          <label class="block text-slate-700 font-bold mb-1">Họ và tên giáo viên:</label>
-          <input type="text" id="customNameInput" placeholder="Ví dụ: Thầy Trần Văn Nam" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold">
-          <p class="text-[10px] text-slate-400 mt-1">Phân quyền tài khoản (Admin / Giáo viên) do Quản trị viên phòng máy thiết lập</p>
+          <label class="block text-slate-700 font-bold mb-1.5">Mật khẩu truy cập <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i class="fa-solid fa-key"></i>
+            </span>
+            <input type="password" id="loginPasswordInput" required placeholder="Nhập mật khẩu..." class="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-brand-500/20 focus:bg-white focus:outline-none">
+            <button type="button" onclick="togglePasswordVisibility('loginPasswordInput', 'loginEyeIcon')" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600">
+              <i id="loginEyeIcon" class="fa-solid fa-eye"></i>
+            </button>
+          </div>
         </div>
-        <button onclick="handleCustomGmailLogin()" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl transition">
-          <i class="fa-brands fa-google mr-1"></i> Tiếp tục với Gmail này
+
+        <div id="loginErrorAlert" class="hidden p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold flex items-start gap-2">
+          <i class="fa-solid fa-triangle-exclamation mt-0.5 flex-shrink-0"></i>
+          <span id="loginErrorMsg"></span>
+        </div>
+
+        <div class="flex items-center gap-2 pt-2">
+          <button type="button" onclick="closeLoginModal()" class="w-1/3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">
+            Đóng
+          </button>
+          <button type="submit" class="w-2/3 py-2.5 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white font-bold rounded-xl transition shadow-md shadow-brand-500/25 flex items-center justify-center gap-2">
+            <i class="fa-solid fa-right-to-bracket"></i> Đăng nhập
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: ĐỔI MẬT KHẨU TÀI KHOẢN (GIÁO VIÊN TỰ ĐỔI - BẢO MẬT ADMIN KHÔNG XEM ĐƯỢC) ================= -->
+  <div id="changePasswordModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-dropdown">
+      <div class="bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-4 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-key"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold">Đổi Mật Khẩu Cá Nhân</h3>
+            <p class="text-xs text-amber-100">Bảo mật riêng tư, Quản trị viên không xem được</p>
+          </div>
+        </div>
+        <button onclick="closeChangePasswordModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition">
+          <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
+
+      <form id="changePasswordForm" onsubmit="handleChangePasswordSubmit(event)" class="p-6 space-y-4 text-xs">
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Mật khẩu hiện tại <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <input type="password" id="oldPasswordInput" required placeholder="Nhập mật khẩu hiện tại..." class="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition outline-none">
+            <button type="button" onclick="togglePasswordVisibility('oldPasswordInput', 'oldPassEyeIcon')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600" title="Hiện/ẩn mật khẩu">
+              <i id="oldPassEyeIcon" class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Mật khẩu mới <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <input type="password" id="newPasswordInput" required minlength="3" placeholder="Nhập mật khẩu mới (tối thiểu 3 ký tự)..." class="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition outline-none">
+            <button type="button" onclick="togglePasswordVisibility('newPasswordInput', 'newPassEyeIcon')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600" title="Hiện/ẩn mật khẩu">
+              <i id="newPassEyeIcon" class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Xác nhận mật khẩu mới <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <input type="password" id="confirmNewPasswordInput" required minlength="3" placeholder="Nhập lại mật khẩu mới..." class="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition outline-none">
+            <button type="button" onclick="togglePasswordVisibility('confirmNewPasswordInput', 'confirmPassEyeIcon')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600" title="Hiện/ẩn mật khẩu">
+              <i id="confirmPassEyeIcon" class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="changePassErrorAlert" class="hidden p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold flex items-start gap-2">
+          <i class="fa-solid fa-triangle-exclamation mt-0.5 flex-shrink-0"></i>
+          <span id="changePassErrorMsg"></span>
+        </div>
+
+        <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-start gap-2">
+          <i class="fa-solid fa-shield-halved text-amber-600 mt-0.5 flex-shrink-0 text-sm"></i>
+          <span><b>Chính sách bảo mật:</b> Sau khi quý thầy/cô đổi mật khẩu, hệ thống sẽ mã hóa và bảo mật riêng tư. Quản trị viên chỉ có thể thấy trạng thái <i>"Đã đổi riêng (Bảo mật)"</i> và <b>hoàn toàn không xem được</b> mật khẩu của quý thầy/cô.</span>
+        </div>
+
+        <div class="flex items-center gap-2 pt-2">
+          <button type="button" onclick="closeChangePasswordModal()" class="w-1/3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">
+            Hủy
+          </button>
+          <button type="submit" class="w-2/3 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold rounded-xl transition shadow-md shadow-amber-500/25 flex items-center justify-center gap-2">
+            <i class="fa-solid fa-check"></i> Cập nhật mật khẩu
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: CẤP LẠI MẬT KHẨU CHO GIÁO VIÊN (ADMIN RESET PASSWORD) ================= -->
+  <div id="adminResetPassModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-dropdown">
+      <div class="bg-gradient-to-r from-purple-800 to-indigo-800 px-6 py-4 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-rotate-left"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold">Cấp Lại Mật Khẩu Tạm Thời</h3>
+            <p class="text-xs text-purple-200" id="adminResetPassTargetName">Cho giáo viên</p>
+          </div>
+        </div>
+        <button onclick="closeAdminResetPassModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="adminResetPassForm" onsubmit="handleAdminResetPassSubmit(event)" class="p-6 space-y-4 text-xs">
+        <input type="hidden" id="adminResetPassEmail">
+
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+          <div class="text-slate-500 text-[11px]">Tài khoản giáo viên:</div>
+          <div class="font-bold text-slate-800 text-xs flex items-center gap-1.5" id="adminResetPassEmailDisplay"></div>
+        </div>
+
+        <div>
+          <label class="block text-slate-700 font-bold mb-1">Mật khẩu mới cấp lại <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <input type="text" id="adminResetPassInput" required placeholder="Nhập mật khẩu mới..." class="w-full px-3.5 py-2.5 pr-20 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition outline-none font-bold text-slate-800">
+            <button type="button" onclick="generateRandomResetPassword()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-purple-600 hover:text-purple-800 text-[11px] font-bold" title="Tạo tự động">
+              <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tạo
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-1">Admin gửi mật khẩu này cho giáo viên để đăng nhập lại hệ thống</p>
+        </div>
+
+        <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-start gap-2">
+          <i class="fa-solid fa-circle-info text-amber-600 mt-0.5 flex-shrink-0"></i>
+          <span>Khi Admin cấp lại mật khẩu tạm thời, giáo viên dùng mật khẩu mới này để đăng nhập và có thể tự đổi lại mật khẩu cá nhân bất cứ lúc nào.</span>
+        </div>
+
+        <div class="flex items-center gap-2 pt-2">
+          <button type="button" onclick="closeAdminResetPassModal()" class="w-1/3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">
+            Hủy
+          </button>
+          <button type="submit" class="w-2/3 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white font-bold rounded-xl transition shadow-md shadow-purple-500/25 flex items-center justify-center gap-2">
+            <i class="fa-solid fa-key"></i> Xác nhận cấp lại
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -1104,6 +1651,47 @@
         </button>
         <button type="button" id="btnSubmitBaoGiangBooking" onclick="submitBaoGiangBookings()" class="hidden px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2">
           <i class="fa-solid fa-check"></i> Xác nhận đăng ký vào phòng máy
+        </button>
+      </div>
+    </div>
+  </div>
+
+    <!-- ================= MODAL: KẾT QUẢ GIAO THÔNG BÁO CHO LỚP ================= -->
+  <div id="dispatchResultModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden animate-dropdown">
+      <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-6 py-4 text-white flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-xs">
+              <i class="fa-solid fa-circle-check"></i>
+            </span>
+            <h3 class="text-sm font-bold text-white" id="dispatchResultModalTitle">Đã Giao Thông Báo Cho Lớp Thành Công</h3>
+          </div>
+          <p class="text-[11px] text-slate-300 mt-0.5" id="dispatchResultModalSubTitle">Thông báo lịch thực hành phòng máy</p>
+        </div>
+        <button onclick="closeDispatchResultModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-5 max-h-[65vh] overflow-y-auto space-y-3" id="dispatchResultModalContent">
+        <!-- Rendered via JS -->
+      </div>
+
+      <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2 text-xs">
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="sendScheduleToZaloGroup()" type="button" class="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-sm flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-users"></i> Gửi Vào Nhóm Zalo
+          </button>
+          <button onclick="sendBulkEmailToMonitors()" type="button" class="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white font-bold rounded-xl shadow-sm flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-envelope"></i> Gửi Email Đồng Loạt
+          </button>
+          <button onclick="copyZaloGroupMessage()" type="button" class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl border border-slate-200 shadow-2xs flex items-center gap-1.5 transition">
+            <i class="fa-regular fa-copy text-slate-500"></i> Sao chép bản tin
+          </button>
+        </div>
+        <button onclick="closeDispatchResultModal()" class="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition">
+          Đóng
         </button>
       </div>
     </div>
